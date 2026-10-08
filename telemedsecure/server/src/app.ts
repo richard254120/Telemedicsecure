@@ -258,6 +258,17 @@ app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/gdpr', gdprRoutes);
 app.use('/api/v1/investigation', investigationRoutes);
 
+// Fallback for unmatched routes
+app.use((req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    return res.status(404).json({ error: 'API endpoint not found', path: req.path });
+  }
+  if (req.accepts('html')) {
+    return res.redirect('/');
+  }
+  res.status(404).json({ error: 'Not found', path: req.path });
+});
+
 // Global Error Handler
 app.use(errorHandler);
 
