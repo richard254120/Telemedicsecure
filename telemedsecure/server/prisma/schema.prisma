@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  NURSE
+  ADMIN
+}
+
+enum ConsultationStatus {
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ViolationType {
+  UNAUTHORIZED_ACCESS
+  DATA_LEAK
+  TAMPERING
+  POLICY_VIOLATION
+  CONSENT_VIOLATION
+  INTEGRITY_VIOLATION
+}
+
+model User {
+  id             String    @id @default(uuid())
+  email          String    @unique
+  passwordHash   String
+  role           Role
+  firstName      String
+  lastName       String
+  isActive       Boolean   @default(true)
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  totpSecret     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Doctor Ed25519 Cryptographic Keys (private key encrypted with doctor password-derived key)
+  doctorPublicKey         String?
+  doctorEncryptedPrivKey  String?
+  doctorKeyDerivationSalt String?
+  doctorKeyIv             String?
+  doctorKeyAuthTag        String?
+
+  patientConsultations Consultation[]  @relation("PatientConsultations")
+  doctorConsultations  Consultation[]  @relation("DoctorConsultations")
+  prescriptions        Prescription[]
+  medicalRecords       MedicalRecord[]
+  auditEvents          AuditEvent[]
+  ClinicalFlag         ClinicalFlag[]
+  consents             Consent[]
+  erasureRequests      ErasureRequest[]
+}
+
+model Consultation {
+  id          String             @id @default(uuid())
+  patientId   String
+  doctorId    String
+  status      ConsultationStatus @default(SCHEDULED)
+  scheduledAt DateTime
+  startedAt   DateTime?
+  endedAt     DateTime?
+
+  // Encrypted notes
+  encryptedNotes String?
+  notesIv        String?
+  notesAuthTag   String?
+  encryptedDek   String?
+  dekIv          String?
+  dekAuthTag     String?
+
+  clinicalFlags ClinicalFlag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient User @relation("PatientConsultations", fields: [patientId], references: [id])
+  doctor  User @relation("DoctorConsultations", fields: [doctorId], references: [id])
+
+  prescriptions Prescription[]
+  vitalSigns    VitalSign[]
+}
+
+model MedicalRecord {
+  id        String @id @default(uuid())
+  patientId String
+
+  // Encrypted diagnosis/data
+  encryptedData String
+  dataIv        String
+  dataAuthTag   String
+  encryptedDek  String
+  dekIv         String
+  dekAuthTag    String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient User @relation(fields: [patientId], references: [id])
+}
+
+model VitalSign {
+  id             String @id @default(uuid())
+  consultationId String
+
+  // Encrypted vitals
+  encryptedVitals String
+  vitalsIv        String
+  vitalsAuthTag   String
+  encryptedDek    String
+  dekIv           String
+  dekAuthTag      String
+
+  createdAt DateTime @default(now())
+
+  consultation Consultation @relation(fields: [consultationId], references: [id])
+}
+
+enum PrescriptionStatus {
+  ISSUED
+  DISPENSED
+  REVOKED
+}
+
+model Prescription {
+  id             String             @id @default(uuid())
+  consultationId String
+  doctorId       String
+  status         PrescriptionStatus @default(ISSUED)
+  statusReason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  consultation Consultation       @relation(fields: [consultationId], references: [id])
+  doctor       User               @relation(fields: [doctorId], references: [id])
+  items        PrescriptionItem[]
+  signature    DigitalSignature?
+}
+
+model PrescriptionItem {
+  id             String @id @default(uuid())
+  prescriptionId String
+  medication     String
+  dosage         String
+  instructions   String
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+model DigitalSignature {
+  id             String   @id @default(uuid())
+  prescriptionId String   @unique
+  signature      String
+  publicKey      String
+  canonicalHash  String?
+  algorithm      String   @default("Ed25519-SHA256")
+
+  createdAt DateTime @default(now())
+
+  prescription Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+model AuditEvent {
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  resource  String
+  ipAddress String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  // Step 8: Hash-chain fields
+  prevHash  String   @default("0000000000000000000000000000000000000000000000000000000000000000")
+  hash      String   @default("")
+
+  user User? @relation(fields: [userId], references: [id])
+}
+
+model ComplianceViolation {
+  id          String        @id @default(uuid())
+  type        ViolationType
+  ruleId      String        @default("CUSTOM_RULE")
+  severity    Severity
+  description String
+  hipaaClause String?
+  gdprClause  String?
+  userId      String?
+  resource    String?
+  metadata    String?
+  reportedAt  DateTime      @default(now())
+  resolved    Boolean       @default(false)
+}
+
+model IntegrityVerification {
+  id          String   @id @default(uuid())
+  entityType  String   @default("AuditEvent")
+  entityId    String   @default("batch")
+  merkleRoot  String
+  txHash      String?
+  blockNumber Int?
+  eventCount  Int      @default(0)
+  verifiedAt  DateTime @default(now())
+  isValid     Boolean  @default(true)
+}
+
+model SecurityAlert {
+  id          String   @id @default(uuid())
+  severity    Severity
+  ruleId      String?
+  title       String?
+  description String
+  sourceIp    String?
+  userId      String?
+  createdAt   DateTime @default(now())
+}
+
+model Consent {
+  id        String    @id @default(uuid())
+  patientId String
+  purpose   String
+  granted   Boolean   @default(true)
+  version   String    @default("1.0")
+  ipAddress String?
+  userAgent String?
+  grantedAt DateTime  @default(now())
+  revokedAt DateTime?
+
+  patient User @relation(fields: [patientId], references: [id])
+}
+
+model ErasureRequest {
+  id              String   @id @default(uuid())
+  userId          String
+  reason          String?
+  status          String   @default("COMPLETED")
+  shreddedAt      DateTime @default(now())
+  recordsShredded Int      @default(0)
+  notesShredded   Int      @default(0)
+  vitalsShredded  Int      @default(0)
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+enum IncidentStatus {
+  OPEN
+  INVESTIGATING
+  CLOSED
+}
+
+model Incident {
+  id              String         @id @default(uuid())
+  alertId         String?
+  title           String
+  description     String
+  severity        Severity       @default(HIGH)
+  status          IncidentStatus @default(OPEN)
+  openedBy        String?
+  targetUserId    String?
+  targetPatientId String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  timeline        IncidentTimeline[]
+  evidence        EvidenceFinding[]
+  reports         ForensicReport[]
+}
+
+model IncidentTimeline {
+  id           String   @id @default(uuid())
+  incidentId   String
+  event        String
+  auditEventId String?
+  action       String?
+  resource     String?
+  userId       String?
+  timestamp    DateTime @default(now())
+  hash         String?
+
+  incident     Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model EvidenceFinding {
+  id           String   @id @default(uuid())
+  incidentId   String
+  description  String
+  evidenceType String   @default("LOG_EXTRACT")
+  hashValue    String
+  metadata     String?
+  createdAt    DateTime @default(now())
+
+  incident     Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model ForensicReport {
+  id           String   @id @default(uuid())
+  incidentId   String
+  title        String
+  summary      String
+  severity     Severity @default(HIGH)
+  investigator String   @default("Admin Investigator")
+  reportHash   String   // SHA-256 hash of PDF/canonical report
+  txHash       String?  // Anchored on-chain tx hash
+  blockNumber  Int?     // Block number
+  chainValid   Boolean  @default(true)
+  pdfPath      String?
+  createdAt    DateTime @default(now())
+
+  incident     Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model ClinicalFlag {
+  id             String       @id @default(uuid())
+  consultationId String
+  consultation   Consultation @relation(fields: [consultationId], references: [id])
+  patientId      String
+  patient        User         @relation(fields: [patientId], references: [id])
+  flagType       String // e.g. "ABNORMAL_VITALS"
+  description    String
+  severity       String // e.g. "HIGH", "MEDIUM"
+  resolved       Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+}

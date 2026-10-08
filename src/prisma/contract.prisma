@@ -1,0 +1,139 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  PATIENT
+  DOCTOR
+  NURSE
+  ADMIN
+}
+
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  role      Role
+  email     String   @unique
+  createdAt DateTime @default(now())
+  
+  // Relations
+  consultationsAsPatient Consultation[] @relation("PatientConsultations")
+  consultationsAsDoctor  Consultation[] @relation("DoctorConsultations")
+  prescriptionsAsPatient Prescription[] @relation("PatientPrescriptions")
+  prescriptionsAsDoctor  Prescription[] @relation("DoctorPrescriptions")
+  auditEvents           AuditEvent[]
+}
+
+model Consultation {
+  id            String    @id @default(uuid())
+  patientId     String
+  doctorId      String
+  startTime     DateTime  @default(now())
+  endTime       DateTime?
+  notes         String?
+  
+  // Relations
+  patient       User      @relation("PatientConsultations", fields: [patientId], references: [id])
+  doctor        User      @relation("DoctorConsultations", fields: [doctorId], references: [id])
+  prescriptions Prescription[]
+}
+
+model Prescription {
+  id               String   @id @default(uuid())
+  consultationId   String
+  doctorId         String
+  patientId        String
+  digitalSignature String
+  createdAt        DateTime @default(now())
+
+  // Relations
+  consultation     Consultation       @relation(fields: [consultationId], references: [id])
+  doctor           User               @relation("DoctorPrescriptions", fields: [doctorId], references: [id])
+  patient          User               @relation("PatientPrescriptions", fields: [patientId], references: [id])
+  items            PrescriptionItem[]
+}
+
+model PrescriptionItem {
+  id             String   @id @default(uuid())
+  prescriptionId String
+  medicationName String
+  dosage         String
+  frequency      String
+
+  // Relations
+  prescription   Prescription @relation(fields: [prescriptionId], references: [id])
+}
+
+enum AuditEventType {
+  COMPLIANCE_VIOLATION
+  INTEGRITY_VERIFICATION
+  SECURITY_ALERT
+  ACCESS_LOG
+}
+
+model AuditEvent {
+  id           String         @id @default(uuid())
+  timestamp    DateTime       @default(now())
+  actorId      String?
+  resourceType String
+  resourceId   String
+  eventType    AuditEventType
+  action       String
+  status       String         // 'SUCCESS' | 'FAILED'
+  hash         String
+
+  // Relations
+  actor        User?          @relation(fields: [actorId], references: [id])
+  incidents    Incident[]     @relation("IncidentAuditEvents")
+}
+
+model Incident {
+  id        String   @id @default(uuid())
+  title     String
+  status    String   // 'OPEN' | 'INVESTIGATING' | 'RESOLVED'
+  findings  String?
+  createdAt DateTime @default(now())
+
+  // Relations
+  auditEvents AuditEvent[]             @relation("IncidentAuditEvents")
+  timeline    IncidentTimelineItem[]
+  evidence    IncidentEvidence[]
+  reports     ForensicReport[]
+}
+
+model IncidentTimelineItem {
+  id          String   @id @default(uuid())
+  incidentId  String
+  timestamp   DateTime @default(now())
+  description String
+
+  // Relations
+  incident    Incident @relation(fields: [incidentId], references: [id])
+}
+
+model IncidentEvidence {
+  id         String   @id @default(uuid())
+  incidentId String
+  type       String   // 'LOG' | 'SIGNATURE_MISMATCH' | 'VIDEO_TAMPERING'
+  data       String
+
+  // Relations
+  incident   Incident @relation(fields: [incidentId], references: [id])
+}
+
+model ForensicReport {
+  id               String   @id @default(uuid())
+  incidentId       String
+  generatedBy      String
+  generatedAt      DateTime @default(now())
+  reportData       String
+  hashVerification String
+
+  // Relations
+  incident         Incident @relation(fields: [incidentId], references: [id])
+}

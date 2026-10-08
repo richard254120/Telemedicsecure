@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: telemedsecure-db
+    environment:
+      POSTGRES_USER: telemed_user
+      POSTGRES_PASSWORD: telemed_password
+      POSTGRES_DB: telemedsecure
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:

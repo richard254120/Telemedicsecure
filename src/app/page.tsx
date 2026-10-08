@@ -1,69 +1,40 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import Link from 'next/link';
+import './globals.css';
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.tsx</code> file.
-          </h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+      <div className="glass-panel animate-fade-in" style={{ padding: '4rem', maxWidth: '800px', textAlign: 'center' }}>
+        <h1 className="title-glow" style={{ fontSize: '3rem', marginBottom: '1rem', background: 'linear-gradient(to right, #e0e1dd, #778da9)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+          TeleMedSecure
+        </h1>
+        <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.6' }}>
+          A Telemedicine Platform with Encrypted Consultations and Forensic Compliance Monitoring. 
+          Built for modern healthcare compliance (HIPAA, GDPR) with end-to-end encrypted video, secure prescription management, and incident investigation tools.
+        </p>
+        
+        <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+          <Link href="/dashboard" className="button">
+            Forensic Dashboard
+          </Link>
+          <Link href="/consultation" className="button" style={{ background: 'transparent', border: '1px solid var(--accent-color)' }}>
+            Join Consultation
+          </Link>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      </div>
+      
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem', marginTop: '4rem', maxWidth: '1000px', width: '100%' }}>
+        {[
+          { title: 'E2E Encryption', desc: 'Secure video/chat and digital signatures for prescriptions.' },
+          { title: 'Compliance Audit', desc: 'Immutable consultation logging and prescription audit trails.' },
+          { title: 'Incident Reconstruction', desc: 'Forensic reporting and compliance violation detection.' }
+        ].map((feat, i) => (
+          <div key={i} className="glass-panel" style={{ padding: '2rem', animationDelay: `${i * 0.2}s` }}>
+            <h3 style={{ color: 'var(--highlight-color)', marginBottom: '0.5rem' }}>{feat.title}</h3>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>{feat.desc}</p>
+          </div>
+        ))}
+      </div>
+    </main>
   );
 }
