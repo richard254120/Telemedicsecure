@@ -26,7 +26,7 @@ router.get('/', async (req, res) => {
     include: {
       patient: { select: { id: true, firstName: true, lastName: true, email: true } },
       doctor: { select: { id: true, firstName: true, lastName: true, email: true } },
-      ClinicalFlag: true,
+      clinicalFlags: true,
       vitalSigns: { select: { id: true, createdAt: true } }
     },
     orderBy: { scheduledAt: 'desc' }

@@ -83,7 +83,7 @@ router.get('/consultation/:consultationId', async (req, res) => {
     const consultation = await prisma.consultation.findUnique({
       where: { id: consultationId },
       include: {
-        ClinicalFlag: true,
+        clinicalFlags: true,
         vitalSigns: { orderBy: { createdAt: 'desc' } }
       }
     });
@@ -117,7 +117,7 @@ router.get('/consultation/:consultationId', async (req, res) => {
     res.json({
       consultationId,
       vitals: decryptedVitals,
-      clinicalFlags: consultation.ClinicalFlag
+      clinicalFlags: consultation.clinicalFlags
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve consultation vitals', details: err.message });
