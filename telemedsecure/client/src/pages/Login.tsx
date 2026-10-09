@@ -5,9 +5,9 @@ import { ShieldCheck, User, Stethoscope, HeartPulse, ShieldAlert, KeyRound, Arro
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, quickLogin, user } = useAuth();
-  const [email, setEmail] = useState('doctor1@telemed.com');
-  const [password, setPassword] = useState('Password123!');
+  const { login, user } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,12 +24,7 @@ export default function Login() {
     }
   };
 
-  const handleQuickLogin = async (role: UserRole) => {
-    setLoading(true);
-    await quickLogin(role);
-    setLoading(false);
-    navigate(`/${role.toLowerCase()}`);
-  };
+
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
@@ -97,61 +92,7 @@ export default function Login() {
             </button>
           </form>
 
-          {/* Quick Demo Role Selector */}
-          <div className="mt-6 pt-6 border-t border-slate-700/70">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                Instant Role-Based Access
-              </span>
-              <span className="text-[10px] text-cyan-400 font-mono">1-Click Demo</span>
-            </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <button
-                onClick={() => handleQuickLogin('DOCTOR')}
-                className="p-3 rounded-2xl bg-slate-900/80 border border-blue-500/30 hover:border-blue-400 hover:bg-slate-900 text-left transition group shadow"
-              >
-                <div className="flex items-center space-x-2 text-blue-400 mb-1">
-                  <Stethoscope className="w-4 h-4" />
-                  <span className="text-xs font-bold text-white group-hover:text-blue-300">Doctor</span>
-                </div>
-                <p className="text-[10px] text-slate-400">Dr. John Doe (EPCS)</p>
-              </button>
-
-              <button
-                onClick={() => handleQuickLogin('PATIENT')}
-                className="p-3 rounded-2xl bg-slate-900/80 border border-cyan-500/30 hover:border-cyan-400 hover:bg-slate-900 text-left transition group shadow"
-              >
-                <div className="flex items-center space-x-2 text-cyan-400 mb-1">
-                  <User className="w-4 h-4" />
-                  <span className="text-xs font-bold text-white group-hover:text-cyan-300">Patient</span>
-                </div>
-                <p className="text-[10px] text-slate-400">Alice Smith (Records)</p>
-              </button>
-
-              <button
-                onClick={() => handleQuickLogin('NURSE')}
-                className="p-3 rounded-2xl bg-slate-900/80 border border-emerald-500/30 hover:border-emerald-400 hover:bg-slate-900 text-left transition group shadow"
-              >
-                <div className="flex items-center space-x-2 text-emerald-400 mb-1">
-                  <HeartPulse className="w-4 h-4" />
-                  <span className="text-xs font-bold text-white group-hover:text-emerald-300">Nurse</span>
-                </div>
-                <p className="text-[10px] text-slate-400">Mary Johnson (Vitals)</p>
-              </button>
-
-              <button
-                onClick={() => handleQuickLogin('ADMIN')}
-                className="p-3 rounded-2xl bg-slate-900/80 border border-purple-500/30 hover:border-purple-400 hover:bg-slate-900 text-left transition group shadow"
-              >
-                <div className="flex items-center space-x-2 text-purple-400 mb-1">
-                  <ShieldAlert className="w-4 h-4" />
-                  <span className="text-xs font-bold text-white group-hover:text-purple-300">Admin</span>
-                </div>
-                <p className="text-[10px] text-slate-400">Compliance & Forensics</p>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
