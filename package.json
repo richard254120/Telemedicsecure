@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
+    "build": "npm --prefix telemedsecure/client run build && npm --prefix telemedsecure/server run build",
+    "start": "npm --prefix telemedsecure/server run start",
+    "prod": "npm --prefix telemedsecure/client run build && npm --prefix telemedsecure/server run start",
     "lint": "eslint",
     "postinstall": "prisma skills sync || exit 0"
   },
