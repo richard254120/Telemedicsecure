@@ -22,13 +22,7 @@ import {
 export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, quickLogin, logout } = useAuth();
-
-  const handleRoleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const role = e.target.value as UserRole;
-    await quickLogin(role);
-    navigate(`/${role.toLowerCase()}`);
-  };
+  const { user, logout } = useAuth();
 
   // Dynamic links depending on active role
   const getRoleNavItems = () => {
@@ -72,13 +66,6 @@ export default function Navbar() {
 
   const navItems = getRoleNavItems();
 
-  const roleColors: Record<UserRole, string> = {
-    DOCTOR: 'text-blue-400 border-blue-500/40 bg-blue-500/10',
-    PATIENT: 'text-cyan-400 border-cyan-500/40 bg-cyan-500/10',
-    NURSE: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10',
-    ADMIN: 'text-purple-400 border-purple-500/40 bg-purple-500/10'
-  };
-
   return (
     <nav className="bg-slate-900 border-b border-slate-800 text-white sticky top-0 z-50 shadow-md">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -107,11 +94,10 @@ export default function Navbar() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${
-                    isActive
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
-                      : 'text-slate-300 hover:text-white hover:bg-slate-800'
-                  }`}
+                  className={`flex items-center space-x-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition ${isActive
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shadow-sm'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800'
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{item.label}</span>
@@ -120,31 +106,16 @@ export default function Navbar() {
             })}
           </div>
 
-          {/* Role Switcher & User Profile */}
+          {/* User Profile */}
           <div className="flex items-center space-x-3">
             {user ? (
               <div className="flex items-center space-x-2 bg-slate-800/80 border border-slate-700/80 px-2.5 py-1.5 rounded-2xl shadow-inner">
-                <span className="text-[10px] uppercase font-bold text-slate-400 hidden sm:inline">Role:</span>
-                <select
-                  value={user.role}
-                  onChange={handleRoleChange}
-                  className={`text-xs font-mono font-bold rounded-lg px-2 py-1 border transition focus:outline-none cursor-pointer ${
-                    roleColors[user.role]
-                  }`}
-                  title="Switch identity role for testing"
-                >
-                  <option value="DOCTOR">🩺 DOCTOR</option>
-                  <option value="PATIENT">👤 PATIENT</option>
-                  <option value="NURSE">🩹 NURSE</option>
-                  <option value="ADMIN">🛡️ ADMIN</option>
-                </select>
-
-                <div className="hidden md:flex flex-col text-left pl-1">
+                <div className="hidden md:flex flex-col text-left">
                   <span className="text-xs font-semibold text-white leading-tight">
                     {user.firstName} {user.lastName}
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono leading-tight">
-                    {user.email}
+                    {user.role}
                   </span>
                 </div>
 

@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
-  const { user, isLoading, quickLogin } = useAuth();
+  const { user, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -54,19 +54,9 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
           </div>
 
           <div className="pt-2 border-t border-slate-700/60 space-y-3">
-            <p className="text-xs text-slate-400 font-medium">Switch Identity to an Allowed Role:</p>
-            <div className="flex flex-wrap gap-2 justify-center">
-              {allowedRoles.map(roleToSwitch => (
-                <button
-                  key={roleToSwitch}
-                  onClick={() => quickLogin(roleToSwitch)}
-                  className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-xs font-semibold text-white transition flex items-center space-x-1.5 border border-slate-600"
-                >
-                  <UserCheck className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Switch to {roleToSwitch}</span>
-                </button>
-              ))}
-            </div>
+            <p className="text-xs text-slate-400 font-medium">
+              Contact an administrator if you believe you should have access to this module.
+            </p>
           </div>
 
           <div className="pt-2">
