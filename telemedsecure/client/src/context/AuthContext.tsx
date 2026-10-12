@@ -110,20 +110,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
+      console.log('Attempting login to:', `${API_BASE}/auth/login`);
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-      if (!res.ok) return false;
+      console.log('Login response status:', res.status, res.statusText);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Login failed:', errorData);
+        return false;
+      }
       const data = await res.json();
+      console.log('Login successful:', data);
       setUser(data.user);
       setToken(data.accessToken);
       localStorage.setItem('telemed_token', data.accessToken);
       localStorage.setItem('telemed_user', JSON.stringify(data.user));
       return true;
     } catch (e) {
-      console.error('Login error', e);
+      console.error('Login error:', e);
       return false;
     }
   };

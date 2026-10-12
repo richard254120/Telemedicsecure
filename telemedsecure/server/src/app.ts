@@ -26,7 +26,7 @@ app.use(
         styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
         fontSrc: ["'self'", 'https://fonts.gstatic.com'],
         imgSrc: ["'self'", 'data:', 'blob:'],
-        connectSrc: ["'self'", 'http://localhost:4000', 'ws://localhost:4000', 'http://127.0.0.1:8545'],
+        connectSrc: ["'self'", 'http://localhost:4000', 'ws://localhost:4000', 'http://127.0.0.1:8545', 'https://telemedsecure-backend.onrender.com', 'wss://telemedsecure-backend.onrender.com'],
         objectSrc: ["'none'"],
         frameAncestors: ["'none'"],
         baseUri: ["'self'"],
@@ -51,11 +51,17 @@ app.use(cors({
     const allowed = [
       process.env.FRONTEND_URL || 'http://localhost:3000',
       'http://localhost:5173',
-      'https://telemedicsecure.vercel.app'
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:42433',
+      'https://telemedicsecure.vercel.app',
+      'https://telemedsecure-backend.onrender.com'
     ];
+    console.log('CORS check:', { origin, allowed });
     if (!origin || allowed.includes(origin)) {
       callback(null, true);
     } else {
+      console.error('CORS blocked:', origin);
       callback(new Error('CORS not allowed'), false);
     }
   },

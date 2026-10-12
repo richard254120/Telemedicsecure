@@ -1,26 +1,65 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
-import { ShieldCheck, User, Stethoscope, HeartPulse, ShieldAlert, KeyRound, ArrowRight, CheckCircle2 } from 'lucide-react';
+import { API_BASE } from '../config';
+import { ShieldCheck, User, Stethoscope, HeartPulse, ShieldAlert, KeyRound, ArrowRight, CheckCircle2, UserPlus } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, user } = useAuth();
+  const { login, quickLogin, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isRegister, setIsRegister] = useState(false);
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
-    const ok = await login(email, password);
+
+    if (isRegister) {
+      // Registration
+      try {
+        const res = await fetch(`${API_BASE}/auth/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, firstName, lastName, role: 'PATIENT' })
+        });
+        if (res.ok) {
+          setError('Registration successful! Please sign in.');
+          setIsRegister(false);
+        } else {
+          const data = await res.json();
+          setError(data.error || 'Registration failed');
+        }
+      } catch (e) {
+        setError('Registration failed. Please try again.');
+      }
+    } else {
+      // Login
+      console.log('Submitting login with:', { email, password: '***' });
+      const ok = await login(email, password);
+      if (ok) {
+        navigate('/dashboard');
+      } else {
+        setError('Invalid credentials or authentication failure. Check console for details.');
+      }
+    }
+    setLoading(false);
+  };
+
+  const handleQuickLogin = async (role: UserRole) => {
+    setLoading(true);
+    setError(null);
+    const ok = await quickLogin(role);
     setLoading(false);
     if (ok) {
       navigate('/dashboard');
     } else {
-      setError('Invalid credentials or authentication failure');
+      setError('Quick login failed');
     }
   };
 
@@ -56,6 +95,37 @@ export default function Login() {
               </div>
             )}
 
+            {isRegister && (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-xl bg-slate-900/80 border border-slate-700 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                 Workstation Email
@@ -88,11 +158,78 @@ export default function Login() {
               className="w-full mt-2 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-sm transition shadow-lg shadow-cyan-600/30 flex items-center justify-center space-x-2 disabled:opacity-50"
             >
               <KeyRound className="w-4 h-4" />
-              <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+              <span>{loading ? (isRegister ? 'Creating Account...' : 'Authenticating...') : (isRegister ? 'Create Account' : 'Sign In')}</span>
             </button>
           </form>
 
+          <div className="mt-4 text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsRegister(!isRegister);
+                setError(null);
+                setEmail('');
+                setPassword('');
+                setFirstName('');
+                setLastName('');
+              }}
+              className="text-xs text-cyan-400 hover:text-cyan-300 font-semibold"
+            >
+              {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Register"}
+            </button>
+          </div>
+        </div>
 
+        {/* Quick Login Options for Demo */}
+        <div className="bg-slate-800/60 py-6 px-6 rounded-2xl border border-slate-700/60 backdrop-blur-xl">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">
+            Quick Demo Access
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={() => handleQuickLogin('DOCTOR')}
+              disabled={loading}
+              className="py-2.5 px-4 rounded-xl bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/30 text-blue-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <Stethoscope className="w-4 h-4" />
+              <span>Doctor</span>
+            </button>
+            <button
+              onClick={() => handleQuickLogin('PATIENT')}
+              disabled={loading}
+              className="py-2.5 px-4 rounded-xl bg-cyan-600/20 border border-cyan-500/30 hover:bg-cyan-600/30 text-cyan-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <User className="w-4 h-4" />
+              <span>Patient</span>
+            </button>
+            <button
+              onClick={() => handleQuickLogin('NURSE')}
+              disabled={loading}
+              className="py-2.5 px-4 rounded-xl bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <HeartPulse className="w-4 h-4" />
+              <span>Nurse</span>
+            </button>
+            <button
+              onClick={() => handleQuickLogin('ADMIN')}
+              disabled={loading}
+              className="py-2.5 px-4 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
+            >
+              <ShieldAlert className="w-4 h-4" />
+              <span>Admin</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Demo Credentials Info */}
+        <div className="bg-slate-800/40 py-4 px-4 rounded-xl border border-slate-700/50 backdrop-blur-xl">
+          <p className="text-[10px] text-slate-400 leading-relaxed">
+            <span className="font-semibold text-slate-300">Demo Credentials:</span><br />
+            Doctor: doctor1@telemed.com / Password123!<br />
+            Patient: patient1@telemed.com / Password123!<br />
+            Nurse: nurse1@telemed.com / Password123!<br />
+            Admin: admin@telemed.com / Password123!
+          </p>
         </div>
       </div>
     </div>
