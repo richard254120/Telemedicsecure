@@ -9,10 +9,10 @@ export default function Home() {
           TeleMedSecure
         </h1>
         <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)', marginBottom: '2rem', lineHeight: '1.6' }}>
-          A Telemedicine Platform with Encrypted Consultations and Forensic Compliance Monitoring. 
+          A Telemedicine Platform with Encrypted Consultations and Forensic Compliance Monitoring..
           Built for modern healthcare compliance (HIPAA, GDPR) with end-to-end encrypted video, secure prescription management, and incident investigation tools.
         </p>
-        
+
         <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
           <Link href="/dashboard" className="button">
             Forensic Dashboard
@@ -22,7 +22,7 @@ export default function Home() {
           </Link>
         </div>
       </div>
-      
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '2rem', marginTop: '4rem', maxWidth: '1000px', width: '100%' }}>
         {[
           { title: 'E2E Encryption', desc: 'Secure video/chat and digital signatures for prescriptions.' },
