@@ -6,7 +6,7 @@ import { ShieldCheck, User, Stethoscope, HeartPulse, ShieldAlert, KeyRound, Arro
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, quickLogin, user } = useAuth();
+  const { login, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -96,19 +96,6 @@ export default function Login() {
     }
     setLoading(false);
   };
-
-  const handleQuickLogin = async (role: UserRole) => {
-    setLoading(true);
-    setError(null);
-    const ok = await quickLogin(role);
-    setLoading(false);
-    if (ok) {
-      navigate('/dashboard');
-    } else {
-      setError('Quick login failed. Please try again.');
-    }
-  };
-
 
 
   return (

@@ -16,7 +16,6 @@ interface AuthContextType {
   token: string | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
-  quickLogin: (role: UserRole) => Promise<boolean>;
   logout: () => void;
   getAuthHeaders: () => Record<string, string>;
 }
@@ -103,27 +102,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const quickLogin = async (role: UserRole): Promise<boolean> => {
-    try {
-      const res = await fetch(`${API_BASE}/auth/quick-login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role })
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data.user);
-        setToken(data.accessToken);
-        localStorage.setItem('telemed_token', data.accessToken);
-        localStorage.setItem('telemed_user', JSON.stringify(data.user));
-        return true;
-      }
-    } catch (e) {
-      console.error('Quick login error', e);
-    }
-    return false;
-  };
-
   const logout = () => {
     setUser(null);
     setToken(null);
@@ -145,7 +123,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         token,
         isLoading,
         login,
-        quickLogin,
         logout,
         getAuthHeaders
       }}

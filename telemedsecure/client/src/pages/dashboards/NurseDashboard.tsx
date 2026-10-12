@@ -29,7 +29,7 @@ export default function NurseDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
 
   // Vitals form state
-  const [selectedConsultationId, setSelectedConsultationId] = useState<string>('demo-123');
+  const [selectedConsultationId, setSelectedConsultationId] = useState<string>('');
   const [bpSystolic, setBpSystolic] = useState<number>(120);
   const [bpDiastolic, setBpDiastolic] = useState<number>(80);
   const [heartRate, setHeartRate] = useState<number>(75);
@@ -37,18 +37,7 @@ export default function NurseDashboard() {
   const [temp, setTemp] = useState<number>(36.8);
 
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
-  const [recentEntries, setRecentEntries] = useState<any[]>([
-    {
-      id: 'entry-1',
-      patientName: 'Alice Smith',
-      time: '14:15',
-      bp: '120/80',
-      hr: 75,
-      spo2: 98,
-      temp: 36.8,
-      flagged: false
-    }
-  ]);
+  const [recentEntries, setRecentEntries] = useState<any[]>([]);
 
   useEffect(() => {
     fetchNurseData();
@@ -187,11 +176,10 @@ export default function NurseDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${
-                  active
-                    ? 'border-emerald-400 text-emerald-400 bg-emerald-500/5'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                }`}
+                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${active
+                  ? 'border-emerald-400 text-emerald-400 bg-emerald-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
@@ -236,7 +224,7 @@ export default function NurseDashboard() {
                     onChange={e => setSelectedConsultationId(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="demo-123">Alice Smith (Room: demo-123) — Cardiology Follow-up</option>
+                    <option value="">Select a consultation...</option>
                     {consultations.map(c => (
                       <option key={c.id} value={c.id}>
                         {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId} (ID: {c.id.substring(0, 8)})
@@ -388,70 +376,44 @@ export default function NurseDashboard() {
             </h2>
 
             <div className="grid gap-4">
-              {/* Default demo patient */}
-              <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/20 text-blue-300">
-                      ROOM: demo-123
-                    </span>
-                    <span className="text-xs text-slate-400">Cardiology Follow-Up</span>
-                  </div>
-                  <h3 className="text-base font-bold text-white">Alice Smith</h3>
-                  <p className="text-xs text-slate-400">Attending: Dr. Sarah Jenkins • Status: In Consultation</p>
+              {consultations.length === 0 ? (
+                <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-3">
+                  <Users className="w-12 h-12 text-slate-500 mx-auto" />
+                  <p className="text-sm text-slate-400">No assigned patients found.</p>
                 </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedConsultationId('demo-123');
-                      setActiveTab('vitals');
-                    }}
-                    className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+              ) : (
+                consultations.map(c => (
+                  <div
+                    key={c.id}
+                    className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
                   >
-                    <HeartPulse className="w-4 h-4" />
-                    <span>Enter Vitals</span>
-                  </button>
-                  <button
-                    onClick={() => navigate('/vitals/demo-123')}
-                    className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs transition"
-                  >
-                    Trends
-                  </button>
-                </div>
-              </div>
+                    <div className="space-y-1">
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
+                        ID: {c.id.substring(0, 8)}
+                      </span>
+                      <h3 className="text-base font-bold text-white">
+                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId}
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'}
+                      </p>
+                    </div>
 
-              {consultations.map(c => (
-                <div
-                  key={c.id}
-                  className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
-                >
-                  <div className="space-y-1">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
-                      ID: {c.id.substring(0, 8)}
-                    </span>
-                    <h3 className="text-base font-bold text-white">
-                      {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId}
-                    </h3>
-                    <p className="text-xs text-slate-400">
-                      Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedConsultationId(c.id);
+                          setActiveTab('vitals');
+                        }}
+                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                      >
+                        <HeartPulse className="w-4 h-4" />
+                        <span>Enter Vitals</span>
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setSelectedConsultationId(c.id);
-                        setActiveTab('vitals');
-                      }}
-                      className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
-                    >
-                      <HeartPulse className="w-4 h-4" />
-                      <span>Enter Vitals</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         )}

@@ -27,9 +27,9 @@ export default function PrescriptionCreate() {
   const [consultations, setConsultations] = useState<any[]>([]);
   const [selectedPatientId, setSelectedPatientId] = useState('');
   const [selectedConsultationId, setSelectedConsultationId] = useState('');
-  const [doctorPassword, setDoctorPassword] = useState('Password123!'); // Default seeded doctor password
+  const [doctorPassword, setDoctorPassword] = useState('');
   const [items, setItems] = useState<ItemForm[]>([
-    { medication: 'Amoxicillin', dosage: '500mg PO TID', instructions: 'Take 1 capsule every 8 hours with meals for 7 days' }
+    { medication: '', dosage: '', instructions: '' }
   ]);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -402,7 +402,7 @@ export default function PrescriptionCreate() {
                 className="w-full max-w-md bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-1">
-                Default seeded credentials: <code className="text-cyan-400 font-mono">Password123!</code>
+                Enter your doctor account password to unlock your Ed25519 signing key.
               </p>
             </div>
           </div>

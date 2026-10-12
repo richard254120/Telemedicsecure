@@ -170,7 +170,7 @@ function AppointmentList() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/waiting-room/demo-123')}
+              onClick={() => navigate('/waiting-room')}
               className="w-full py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/30 flex items-center justify-center space-x-2"
             >
               <span>Join Room</span>
@@ -190,7 +190,7 @@ function AppointmentList() {
               </p>
             </div>
             <button
-              onClick={() => navigate('/vitals/demo-123')}
+              onClick={() => navigate('/vitals')}
               className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-2"
             >
               <span>Vitals Dashboard</span>
@@ -270,7 +270,7 @@ function AppointmentList() {
         {/* Active Appointments List */}
         <div className="space-y-4">
           <h2 className="text-xl font-bold text-white flex items-center space-x-2">
-            <span>Today's Scheduled Consultations</span>
+            <span>Scheduled Consultations</span>
           </h2>
 
           <div className="grid gap-4">
@@ -280,22 +280,21 @@ function AppointmentList() {
                   <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
                     SCHEDULED
                   </span>
-                  <span className="text-xs text-slate-400 font-mono">Room: demo-123</span>
                 </div>
-                <h3 className="text-base font-bold text-white">Dr. Sarah Jenkins & Alice Smith</h3>
-                <p className="text-xs text-slate-400">Cardiology Follow-up & Prescription Renewal • Today, 2:30 PM</p>
+                <h3 className="text-base font-bold text-white">No active consultations</h3>
+                <p className="text-xs text-slate-400">Create a consultation through your dashboard to get started.</p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => navigate('/waiting-room/demo-123')}
+                  onClick={() => navigate('/waiting-room')}
                   className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition shadow-lg shadow-blue-500/20 flex items-center space-x-1.5"
                 >
                   <Video className="w-4 h-4" />
                   <span>Join Call</span>
                 </button>
                 <button
-                  onClick={() => navigate('/vitals/demo-123')}
+                  onClick={() => navigate('/vitals')}
                   className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs py-2.5 px-4 rounded-xl transition shadow-lg shadow-emerald-500/20 flex items-center space-x-1.5"
                 >
                   <HeartPulse className="w-4 h-4" />
