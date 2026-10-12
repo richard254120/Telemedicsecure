@@ -1,10 +1,10 @@
 import dotenv from 'dotenv';
-dotenv.config();
 import http from 'http';
 import app from './app';
 import { Server } from 'socket.io';
-import dotenv from 'dotenv';
 import { setupSignaling } from './socket/signaling';
+import { backfillChainIfEmpty, startPeriodicAnchoring } from './services/audit.service';
+import { setIO } from './socket';
 
 dotenv.config();
 
@@ -16,11 +16,9 @@ const io = new Server(server, {
     origin: process.env.FRONTEND_URL || 'http://localhost:5173',
     methods: ['GET', 'POST'],
     credentials: true,
+    allowedHeaders: ['Content-Type', 'Authorization'],
   },
 });
-
-import { backfillChainIfEmpty, startPeriodicAnchoring } from './services/audit.service';
-import { setIO } from './socket';
 
 setIO(io);
 setupSignaling(io);
