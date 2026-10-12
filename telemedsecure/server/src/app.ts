@@ -57,13 +57,25 @@ app.use(cors({
       'https://telemedicsecure.vercel.app',
       'https://telemedsecure-backend.onrender.com'
     ];
-    console.log('CORS check:', { origin, allowed });
-    if (!origin || allowed.includes(origin)) {
-      callback(null, true);
-    } else {
-      console.error('CORS blocked:', origin);
-      callback(new Error('CORS not allowed'), false);
+
+    // Allow requests with no origin (like mobile apps, curl, etc.)
+    if (!origin) {
+      return callback(null, true);
     }
+
+    // Check if origin is in allowed list
+    if (allowed.includes(origin)) {
+      return callback(null, true);
+    }
+
+    // Allow local network IP addresses (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+    const localNetworkPattern = /^(http:\/\/)?(192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$/;
+    if (localNetworkPattern.test(origin)) {
+      return callback(null, true);
+    }
+
+    console.error('CORS blocked:', origin);
+    callback(new Error('CORS not allowed'), false);
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
