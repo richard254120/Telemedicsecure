@@ -15,6 +15,8 @@ import ComplianceDashboard from './pages/ComplianceDashboard';
 import IncidentForensicsDashboard from './pages/IncidentForensicsDashboard';
 import ReportVerification from './pages/ReportVerification';
 import Login from './pages/Login';
+import ConsultationCreate from './pages/ConsultationCreate';
+import AppointmentScheduler from './pages/AppointmentScheduler';
 
 import PatientDashboard from './pages/dashboards/PatientDashboard';
 import DoctorDashboard from './pages/dashboards/DoctorDashboard';
@@ -386,6 +388,22 @@ function App() {
               <Route path="/waiting-room/:id" element={<WaitingRoom />} />
               <Route path="/call/:id" element={<CallRoom />} />
               <Route path="/vitals/:id" element={<VitalsDashboard />} />
+              <Route
+                path="/consultations/new"
+                element={
+                  <ProtectedRoute allowedRoles={['DOCTOR', 'ADMIN']}>
+                    <ConsultationCreate />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/calendar"
+                element={
+                  <ProtectedRoute allowedRoles={['DOCTOR', 'ADMIN', 'NURSE']}>
+                    <AppointmentScheduler />
+                  </ProtectedRoute>
+                }
+              />
 
               {/* Prescriptions & Verification */}
               <Route path="/prescriptions" element={<PrescriptionList />} />

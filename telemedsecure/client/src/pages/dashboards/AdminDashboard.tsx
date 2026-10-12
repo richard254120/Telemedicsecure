@@ -189,6 +189,20 @@ export default function AdminDashboard() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
+              onClick={() => navigate('/calendar')}
+              className="px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs transition flex items-center space-x-2"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Calendar</span>
+            </button>
+            <button
+              onClick={() => navigate('/consultations/new')}
+              className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/20 flex items-center space-x-2"
+            >
+              <Calendar className="w-4 h-4" />
+              <span>Schedule Consultation</span>
+            </button>
+            <button
               onClick={() => navigate('/investigation')}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-semibold text-xs transition shadow-lg shadow-purple-600/20 flex items-center space-x-2"
             >
@@ -222,11 +236,10 @@ export default function AdminDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs whitespace-nowrap transition ${
-                  active
-                    ? 'border-purple-400 text-purple-400 bg-purple-500/5'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                }`}
+                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs whitespace-nowrap transition ${active
+                  ? 'border-purple-400 text-purple-400 bg-purple-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
@@ -361,11 +374,10 @@ export default function AdminDashboard() {
                     >
                       <div className="space-y-1">
                         <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            alert.severity === 'CRITICAL'
-                              ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${alert.severity === 'CRITICAL'
+                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            }`}>
                             {alert.severity}
                           </span>
                           <span className="text-xs font-bold text-white">{alert.title}</span>
@@ -432,11 +444,10 @@ export default function AdminDashboard() {
                         </td>
 
                         <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${
-                            u.isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          }`}>
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${u.isActive
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            }`}>
                             {u.isActive ? 'ACTIVE' : 'SUSPENDED'}
                           </span>
                         </td>
@@ -444,11 +455,10 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4 text-right space-x-2">
                           <button
                             onClick={() => handleToggleUserStatus(u.id, u.isActive)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
-                              u.isActive
-                                ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
-                                : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
-                            }`}
+                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${u.isActive
+                              ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
+                              : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
+                              }`}
                           >
                             {u.isActive ? 'Suspend' : 'Activate'}
                           </button>
@@ -506,11 +516,10 @@ export default function AdminDashboard() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-700/70 pb-3">
                       <div>
                         <div className="flex items-center space-x-2">
-                          <span className={`px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold ${
-                            rx.signatureStatus === 'VALID'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          }`}>
+                          <span className={`px-2.5 py-0.5 rounded-lg text-xs font-mono font-bold ${rx.signatureStatus === 'VALID'
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            }`}>
                             SIGNATURE: {rx.signatureStatus}
                           </span>
                           <span className="text-xs text-slate-400 font-mono">
@@ -523,13 +532,12 @@ export default function AdminDashboard() {
                       </div>
 
                       <div className="text-right">
-                        <span className={`px-2.5 py-1 rounded text-xs font-mono font-semibold ${
-                          rx.status === 'ISSUED'
-                            ? 'bg-emerald-500/20 text-emerald-300'
-                            : rx.status === 'DISPENSED'
+                        <span className={`px-2.5 py-1 rounded text-xs font-mono font-semibold ${rx.status === 'ISSUED'
+                          ? 'bg-emerald-500/20 text-emerald-300'
+                          : rx.status === 'DISPENSED'
                             ? 'bg-blue-500/20 text-blue-300'
                             : 'bg-red-500/20 text-red-300'
-                        }`}>
+                          }`}>
                           STATUS: {rx.status}
                         </span>
                       </div>
@@ -631,13 +639,12 @@ export default function AdminDashboard() {
                   >
                     <div className="space-y-1.5">
                       <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                          inc.status === 'OPEN'
-                            ? 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            : inc.status === 'INVESTIGATING'
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${inc.status === 'OPEN'
+                          ? 'bg-red-500/20 text-red-300 border border-red-500/30'
+                          : inc.status === 'INVESTIGATING'
                             ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                             : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        }`}>
+                          }`}>
                           {inc.status}
                         </span>
                         <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-purple-500/20 text-purple-300">
