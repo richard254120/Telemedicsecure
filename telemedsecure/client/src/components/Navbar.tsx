@@ -42,7 +42,7 @@ export default function Navbar() {
     });
 
     if (user.role === 'DOCTOR') {
-      items.push({ label: 'Vitals & Flags', path: '/vitals/demo-123', icon: HeartPulse });
+      items.push({ label: 'Vitals & Flags', path: '/vitals', icon: HeartPulse });
       items.push({ label: 'Issue RX', path: '/prescriptions/new', icon: PlusCircle });
       items.push({ label: 'Prescriptions', path: '/prescriptions', icon: FileText });
     } else if (user.role === 'PATIENT') {
