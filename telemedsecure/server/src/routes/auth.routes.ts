@@ -31,9 +31,30 @@ const logAudit = async (action: string, resource: string, userId?: string | null
 router.post('/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, role } = req.body;
-    
+
+    // Validation
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({ error: 'All fields are required' });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: 'Invalid email format' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    }
+
+    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+      return res.status(400).json({ error: 'Password must contain uppercase, lowercase, and number' });
+    }
+
+    if (firstName.length < 2 || lastName.length < 2) {
+      return res.status(400).json({ error: 'Names must be at least 2 characters' });
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ error: 'User exists' });
+    if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
 
     const passwordHash = await argon2.hash(password);
     const userRole = Object.values(Role).includes(role) ? role : Role.PATIENT;
@@ -43,9 +64,10 @@ router.post('/register', async (req, res) => {
     });
 
     await logAudit('REGISTER', 'AUTH', user.id, req.ip);
-    res.status(201).json({ message: 'User registered' });
-  } catch (error) {
-    res.status(500).json({ error: 'Registration failed' });
+    res.status(201).json({ message: 'User registered successfully', user: { id: user.id, email: user.email, role: user.role } });
+  } catch (error: any) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed. Please try again.' });
   }
 });
 
@@ -69,18 +91,18 @@ router.post('/login', async (req, res) => {
     if (user.passwordHash.startsWith('$argon2')) {
       validPassword = await argon2.verify(user.passwordHash, password);
     }
-  } catch {}
+  } catch { }
   if (!validPassword) {
     try {
       validPassword = await bcrypt.compare(password, user.passwordHash);
-    } catch {}
+    } catch { }
   }
-  
+
   if (!validPassword) {
     const failedAttempts = user.failedAttempts + 1;
     const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
     await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
-    
+
     await logAudit('LOGIN_FAILURE', 'AUTH', user.id, req.ip);
     await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
     return res.status(401).json({ error: 'Invalid credentials' });
