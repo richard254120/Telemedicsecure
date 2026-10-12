@@ -198,8 +198,8 @@ export default function Login() {
                         type="button"
                         onClick={() => setSelectedRole(role)}
                         className={`p-3 rounded-xl border-2 text-xs font-semibold transition flex items-center justify-center space-x-2 ${selectedRole === role
-                            ? `border-${color}-500 bg-${color}-500/20 text-${color}-400`
-                            : 'border-slate-700 bg-slate-900/60 text-slate-400 hover:border-slate-600'
+                          ? `border-${color}-500 bg-${color}-500/20 text-${color}-400`
+                          : 'border-slate-700 bg-slate-900/60 text-slate-400 hover:border-slate-600'
                           }`}
                       >
                         <Icon className="w-4 h-4" />
@@ -291,58 +291,6 @@ export default function Login() {
               {isRegister ? 'Already have an account? Sign In' : "Don't have an account? Register"}
             </button>
           </div>
-        </div>
-
-        {/* Quick Login Options for Demo */}
-        <div className="bg-slate-800/60 py-6 px-6 rounded-2xl border border-slate-700/60 backdrop-blur-xl">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3 text-center">
-            Quick Demo Access
-          </p>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => handleQuickLogin('DOCTOR')}
-              disabled={loading}
-              className="py-2.5 px-4 rounded-xl bg-blue-600/20 border border-blue-500/30 hover:bg-blue-600/30 text-blue-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <Stethoscope className="w-4 h-4" />
-              <span>Doctor</span>
-            </button>
-            <button
-              onClick={() => handleQuickLogin('PATIENT')}
-              disabled={loading}
-              className="py-2.5 px-4 rounded-xl bg-cyan-600/20 border border-cyan-500/30 hover:bg-cyan-600/30 text-cyan-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <User className="w-4 h-4" />
-              <span>Patient</span>
-            </button>
-            <button
-              onClick={() => handleQuickLogin('NURSE')}
-              disabled={loading}
-              className="py-2.5 px-4 rounded-xl bg-emerald-600/20 border border-emerald-500/30 hover:bg-emerald-600/30 text-emerald-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <HeartPulse className="w-4 h-4" />
-              <span>Nurse</span>
-            </button>
-            <button
-              onClick={() => handleQuickLogin('ADMIN')}
-              disabled={loading}
-              className="py-2.5 px-4 rounded-xl bg-purple-600/20 border border-purple-500/30 hover:bg-purple-600/30 text-purple-400 font-semibold text-xs transition flex items-center justify-center space-x-2 disabled:opacity-50"
-            >
-              <ShieldAlert className="w-4 h-4" />
-              <span>Admin</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Demo Credentials Info */}
-        <div className="bg-slate-800/40 py-4 px-4 rounded-xl border border-slate-700/50 backdrop-blur-xl">
-          <p className="text-[10px] text-slate-400 leading-relaxed">
-            <span className="font-semibold text-slate-300">Demo Credentials:</span><br />
-            Doctor: doctor1@telemed.com / Password123!<br />
-            Patient: patient1@telemed.com / Password123!<br />
-            Nurse: nurse1@telemed.com / Password123!<br />
-            Admin: admin@telemed.com / Password123!
-          </p>
         </div>
       </div>
     </div>

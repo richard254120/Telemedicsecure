@@ -61,48 +61,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return;
           }
         } catch (e) {
-          console.warn('Backend auth check skipped, falling back to cached user', e);
+          console.warn('Backend auth check failed, clearing session', e);
         }
       }
 
-      // If no valid session, default to DOCTOR for seamless instant demo experience
-      try {
-        const res = await fetch(`${API_BASE}/auth/quick-login`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ role: 'DOCTOR' })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          setUser(data.user);
-          setToken(data.accessToken);
-          localStorage.setItem('telemed_token', data.accessToken);
-          localStorage.setItem('telemed_user', JSON.stringify(data.user));
-        } else {
-          // Fallback offline mock if server not reachable
-          const fallbackUser: AuthUser = {
-            id: 'mock-doctor-id',
-            email: 'doctor1@telemed.com',
-            firstName: 'John',
-            lastName: 'Doe',
-            role: 'DOCTOR'
-          };
-          setUser(fallbackUser);
-          setToken('mock-jwt-token');
-        }
-      } catch {
-        const fallbackUser: AuthUser = {
-          id: 'mock-doctor-id',
-          email: 'doctor1@telemed.com',
-          firstName: 'John',
-          lastName: 'Doe',
-          role: 'DOCTOR'
-        };
-        setUser(fallbackUser);
-        setToken('mock-jwt-token');
-      } finally {
-        setIsLoading(false);
-      }
+      // Clear invalid session
+      setUser(null);
+      setToken(null);
+      localStorage.removeItem('telemed_token');
+      localStorage.removeItem('telemed_user');
+      setIsLoading(false);
     };
 
     initAuth();
@@ -153,26 +121,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error('Quick login error', e);
     }
-
-    // Client fallback
-    const names: Record<UserRole, { first: string; last: string; email: string }> = {
-      PATIENT: { first: 'Alice', last: 'Smith', email: 'patient1@telemed.com' },
-      DOCTOR: { first: 'John', last: 'Doe', email: 'doctor1@telemed.com' },
-      NURSE: { first: 'Mary', last: 'Johnson', email: 'nurse1@telemed.com' },
-      ADMIN: { first: 'System', last: 'Admin', email: 'admin@telemed.com' }
-    };
-    const mock: AuthUser = {
-      id: `mock-${role.toLowerCase()}-id`,
-      email: names[role].email,
-      firstName: names[role].first,
-      lastName: names[role].last,
-      role
-    };
-    setUser(mock);
-    setToken(`mock-token-${role}`);
-    localStorage.setItem('telemed_token', `mock-token-${role}`);
-    localStorage.setItem('telemed_user', JSON.stringify(mock));
-    return true;
+    return false;
   };
 
   const logout = () => {

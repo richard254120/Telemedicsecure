@@ -37,13 +37,8 @@ export default function DoctorDashboard() {
   const [clinicalNote, setClinicalNote] = useState<string>('');
   const [noteStatus, setNoteStatus] = useState<string | null>(null);
 
-  // Vitals mock history for trend chart
-  const [vitalsHistory, setVitalsHistory] = useState([
-    { time: '09:00', heartRate: 72, bpSys: 120, bpDia: 80, spO2: 98 },
-    { time: '11:00', heartRate: 76, bpSys: 124, bpDia: 82, spO2: 97 },
-    { time: '13:00', heartRate: 104, bpSys: 145, bpDia: 94, spO2: 91 },
-    { time: '15:00', heartRate: 88, bpSys: 130, bpDia: 86, spO2: 95 }
-  ]);
+  // Vitals history for trend chart - fetched from backend
+  const [vitalsHistory, setVitalsHistory] = useState<any[]>([]);
 
   useEffect(() => {
     fetchDoctorData();
@@ -145,11 +140,10 @@ export default function DoctorDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${
-                  active
-                    ? 'border-blue-400 text-blue-400 bg-blue-500/5'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                }`}
+                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${active
+                  ? 'border-blue-400 text-blue-400 bg-blue-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
@@ -172,39 +166,6 @@ export default function DoctorDashboard() {
             </div>
 
             <div className="grid gap-4">
-              {/* Default demo session card */}
-              <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 hover:border-blue-500/50 transition shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1.5">
-                  <div className="flex items-center space-x-2">
-                    <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                      TODAY • 2:30 PM
-                    </span>
-                    <span className="text-xs text-slate-400 font-mono">Room: demo-123</span>
-                  </div>
-                  <h3 className="text-base font-bold text-white">Alice Smith — Cardiology Follow-Up</h3>
-                  <p className="text-xs text-slate-400">
-                    Patient requested prescription review & vital sign check.
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => navigate('/waiting-room/demo-123')}
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/30 flex items-center space-x-1.5"
-                  >
-                    <Video className="w-4 h-4" />
-                    <span>Join E2EE Call</span>
-                  </button>
-                  <button
-                    onClick={() => navigate('/vitals/demo-123')}
-                    className="px-3.5 py-2.5 rounded-xl bg-emerald-600/80 hover:bg-emerald-600 text-white font-semibold text-xs transition flex items-center space-x-1.5"
-                  >
-                    <HeartPulse className="w-4 h-4" />
-                    <span>View Vitals</span>
-                  </button>
-                </div>
-              </div>
-
               {consultations.map(c => (
                 <div
                   key={c.id}
@@ -311,23 +272,6 @@ export default function DoctorDashboard() {
               </div>
             ) : (
               <div className="grid gap-4">
-                <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex items-center justify-between">
-                  <div>
-                    <h4 className="text-base font-bold text-white">Alice Smith — Consultation demo-123</h4>
-                    <p className="text-xs text-slate-400">Cardiology assessment notes ready for updates.</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setSelectedConsultation({ id: 'demo-123', patient: { firstName: 'Alice', lastName: 'Smith' } });
-                      setClinicalNote('Patient presents with mild hypertension and elevated resting heart rate. Prescribed ACE inhibitor.');
-                    }}
-                    className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center space-x-1.5"
-                  >
-                    <FileEdit className="w-3.5 h-3.5" />
-                    <span>Open Clinical Note</span>
-                  </button>
-                </div>
-
                 {consultations.map(c => (
                   <div
                     key={c.id}
@@ -400,13 +344,12 @@ export default function DoctorDashboard() {
                   >
                     <div className="space-y-2">
                       <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                          rx.status === 'ISSUED'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : rx.status === 'DISPENSED'
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${rx.status === 'ISSUED'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : rx.status === 'DISPENSED'
                             ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                             : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        }`}>
+                          }`}>
                           {rx.status}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">RX: {rx.id.substring(0, 8)}...</span>
@@ -465,7 +408,7 @@ export default function DoctorDashboard() {
               </div>
 
               <button
-                onClick={() => navigate('/vitals/demo-123')}
+                onClick={() => navigate('/vitals')}
                 className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
               >
                 <PlusCircle className="w-4 h-4" />
@@ -473,38 +416,29 @@ export default function DoctorDashboard() {
               </button>
             </div>
 
-            {/* Abnormal clinical flags warning */}
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-              <div className="flex items-center space-x-2 text-amber-400 font-bold text-sm">
-                <AlertTriangle className="w-4 h-4" />
-                <span>Active Clinical Flags Detected</span>
-              </div>
-              <p className="text-xs text-amber-200/90 leading-relaxed">
-                Alice Smith (Cardiology): Tachycardia (104 bpm) & Mild Hypoxia (91% SpO2) detected at 13:00. Blood pressure peaked at 145/94 mmHg.
-              </p>
-            </div>
-
             {/* Chart */}
-            <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg space-y-4">
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Vitals Trend (Heart Rate & Oxygen Saturation)
-              </h3>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={vitalsHistory}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-                    <XAxis dataKey="time" stroke="#94a3b8" />
-                    <YAxis yAxisId="left" stroke="#ef4444" domain={[60, 120]} />
-                    <YAxis yAxisId="right" orientation="right" stroke="#06b6d4" domain={[85, 100]} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', borderRadius: '0.75rem' }}
-                    />
-                    <Line yAxisId="left" type="monotone" dataKey="heartRate" stroke="#ef4444" strokeWidth={2.5} name="Heart Rate (bpm)" />
-                    <Line yAxisId="right" type="monotone" dataKey="spO2" stroke="#06b6d4" strokeWidth={2.5} name="SpO2 (%)" />
-                  </LineChart>
-                </ResponsiveContainer>
+            {vitalsHistory.length > 0 && (
+              <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg space-y-4">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Vitals Trend (Heart Rate & Oxygen Saturation)
+                </h3>
+                <div className="h-64">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={vitalsHistory}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                      <XAxis dataKey="time" stroke="#94a3b8" />
+                      <YAxis yAxisId="left" stroke="#ef4444" domain={[60, 120]} />
+                      <YAxis yAxisId="right" orientation="right" stroke="#06b6d4" domain={[85, 100]} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', borderRadius: '0.75rem' }}
+                      />
+                      <Line yAxisId="left" type="monotone" dataKey="heartRate" stroke="#ef4444" strokeWidth={2.5} name="Heart Rate (bpm)" />
+                      <Line yAxisId="right" type="monotone" dataKey="spO2" stroke="#06b6d4" strokeWidth={2.5} name="SpO2 (%)" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>

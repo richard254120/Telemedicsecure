@@ -150,7 +150,7 @@ export default function PatientDashboard() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
-              onClick={() => navigate('/waiting-room/demo-123')}
+              onClick={() => navigate('/waiting-room')}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/20 flex items-center space-x-2"
             >
               <Video className="w-4 h-4" />
@@ -183,11 +183,10 @@ export default function PatientDashboard() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${
-                  active
-                    ? 'border-cyan-400 text-cyan-400 bg-cyan-500/5'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                }`}
+                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${active
+                  ? 'border-cyan-400 text-cyan-400 bg-cyan-500/5'
+                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
               >
                 <Icon className="w-4 h-4" />
                 <span>{tab.label}</span>
@@ -210,23 +209,9 @@ export default function PatientDashboard() {
             </div>
 
             {appointments.length === 0 ? (
-              <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-4">
+              <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-3">
                 <Calendar className="w-12 h-12 text-slate-500 mx-auto" />
                 <p className="text-sm text-slate-400">No scheduled consultations found on record.</p>
-                <div className="p-4 rounded-2xl bg-slate-800 border border-slate-700 max-w-md mx-auto text-left">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-white">Demo Consultation Session</span>
-                    <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-mono">SCHEDULED</span>
-                  </div>
-                  <p className="text-xs text-slate-400">Room: demo-123 • Dr. Sarah Jenkins</p>
-                  <button
-                    onClick={() => navigate('/waiting-room/demo-123')}
-                    className="mt-3 w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-semibold flex items-center justify-center space-x-1"
-                  >
-                    <Video className="w-3.5 h-3.5" />
-                    <span>Enter Waiting Room</span>
-                  </button>
-                </div>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -351,13 +336,12 @@ export default function PatientDashboard() {
                   >
                     <div className="space-y-2">
                       <div className="flex items-center space-x-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${
-                          rx.status === 'ISSUED'
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : rx.status === 'DISPENSED'
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${rx.status === 'ISSUED'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : rx.status === 'DISPENSED'
                             ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
                             : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        }`}>
+                          }`}>
                           {rx.status}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">RX: {rx.id.substring(0, 8)}...</span>
@@ -449,11 +433,10 @@ export default function PatientDashboard() {
 
                       <button
                         onClick={() => handleToggleConsent(item.purpose, isGranted)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${
-                          isGranted
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40'
-                            : 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
-                        }`}
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-1.5 ${isGranted
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-red-500/20 hover:text-red-300 hover:border-red-500/40'
+                          : 'bg-red-500/20 text-red-300 border border-red-500/40 hover:bg-emerald-500/20 hover:text-emerald-300 hover:border-emerald-500/40'
+                          }`}
                       >
                         {isGranted ? (
                           <>
