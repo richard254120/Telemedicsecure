@@ -215,8 +215,75 @@ router.post('/apply-practitioner', async (req, res) => {
   await logAudit('PASSWORD_CHANGE_SUCCESS', 'AUTH', user.id, req.ip);
   res.json({ message: 'Password changed successfully' });
 });
-    const { email, password, totp } = req.body;
-    const user = await prisma.user.findUnique({ where: { email } });
+router.post('/login', async (req, res) => {
+  const { email, password, totp } = req.body;
+
+  // Generic error response for any failure
+  const invalidResponse = () => res.status(401).json({ error: 'Invalid credentials' });
+
+  if (!email || !password) {
+    await logAudit('LOGIN_FAILURE', 'AUTH', null, req.ip);
+    await rulesEngine.recordFailedLogin(email, req.ip || 'unknown', null);
+    return invalidResponse();
+  }
+
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  if (!user) {
+    await logAudit('LOGIN_FAILURE', 'AUTH', null, req.ip);
+    await rulesEngine.recordFailedLogin(email, req.ip || 'unknown', null);
+    return invalidResponse();
+  }
+
+  // Reject deactivated or locked accounts
+  if (!user.isActive || (user.lockedUntil && user.lockedUntil > new Date())) {
+    await logAudit('LOGIN_LOCKED', 'AUTH', user.id, req.ip);
+    return res.status(403).json({ error: 'Invalid credentials' });
+  }
+
+  // Verify password (argon2 or bcrypt fallback)
+  let validPassword = false;
+  try {
+    if (user.passwordHash.startsWith('$argon2')) {
+      validPassword = await argon2.verify(user.passwordHash, password);
+    }
+  } catch {}
+  if (!validPassword) {
+    try {
+      validPassword = await bcrypt.compare(password, user.passwordHash);
+    } catch {}
+  }
+  if (!validPassword) {
+    const failedAttempts = (user.failedAttempts ?? 0) + 1;
+    const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+    await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
+    await logAudit('LOGIN_FAILURE', 'AUTH', user.id, req.ip);
+    await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
+    return invalidResponse();
+  }
+
+  // TOTP check if enabled
+  if (user.totpSecret && !totp) {
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+  if (user.totpSecret && totp) {
+    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: totp });
+    if (!isValid) {
+      await logAudit('LOGIN_FAILURE_TOTP', 'AUTH', user.id, req.ip);
+      return invalidResponse();
+    }
+  }
+
+  // Reset failed attempts on success
+  await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
+  rulesEngine.resetFailedLogins(user.email);
+  await logAudit('LOGIN_SUCCESS', 'AUTH', user.id, req.ip);
+
+  const tokens = generateTokens(user);
+  const payload = { ...tokens, user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } };
+  res.json(payload);
+});
+    
 
     // Generic error response for any failure
     const invalidResponse = () => res.status(401).json({ error: 'Invalid credentials' });
@@ -281,87 +348,6 @@ router.post('/apply-practitioner', async (req, res) => {
     const tokens = generateTokens(user);
     const payload = { ...tokens, user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } };
     res.json(payload);
-  });
-  const { email, password, totp } = req.body;
-  const user = await prisma.user.findUnique({ where: { email } });
-
-  if (!user) {
-    await logAudit('LOGIN_FAILURE', 'AUTH', null, req.ip);
-    await rulesEngine.recordFailedLogin(email, req.ip || 'unknown', null);
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  if (!user.isActive || (user.lockedUntil && user.lockedUntil > new Date())) {
-    await logAudit('LOGIN_LOCKED', 'AUTH', user.id, req.ip);
-    return res.status(403).json({ error: 'Account locked or inactive' });
-  }
-
-  let validPassword = false;
-  try {
-    if (user.passwordHash.startsWith('$argon2')) {
-      validPassword = await argon2.verify(user.passwordHash, password);
-    }
-  } catch { }
-  if (!validPassword) {
-    try {
-      validPassword = await bcrypt.compare(password, user.passwordHash);
-    } catch { }
-  }
-
-  if (!validPassword) {
-    const failedAttempts = user.failedAttempts + 1;
-    const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
-    await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
-
-    await logAudit('LOGIN_FAILURE', 'AUTH', user.id, req.ip);
-    await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
-    return res.status(401).json({ error: 'Invalid credentials' });
-  }
-
-  // Security gate: Verify clinical practitioner credential approval
-  if (user.role !== Role.PATIENT && user.verificationStatus === VerificationStatus.PENDING_REVIEW) {
-    await logAudit('LOGIN_BLOCKED_PENDING_VERIFICATION', 'AUTH', user.id, req.ip);
-    return res.status(403).json({
-      error: 'Clinical credential verification pending. A medical administrator must verify your medical license before access is granted.'
-    });
-  }
-
-  if (user.verificationStatus === VerificationStatus.REJECTED) {
-    await logAudit('LOGIN_BLOCKED_REJECTED', 'AUTH', user.id, req.ip);
-    return res.status(403).json({
-      error: 'Your practitioner verification was rejected. Please contact clinical administration.'
-    });
-  }
-
-  if (user.totpSecret && !totp) {
-    return res.status(401).json({ error: 'TOTP required' });
-  }
-
-  if (user.totpSecret && totp) {
-    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: totp });
-    if (!isValid) {
-      await logAudit('LOGIN_FAILURE_TOTP', 'AUTH', user.id, req.ip);
-      return res.status(401).json({ error: 'Invalid TOTP' });
-    }
-  }
-
-  await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
-  rulesEngine.resetFailedLogins(user.email);
-  await logAudit('LOGIN_SUCCESS', 'AUTH', user.id, req.ip);
-
-  const tokens = generateTokens(user.id);
-  res.json({
-    ...tokens,
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      role: user.role,
-      verificationStatus: user.verificationStatus,
-      specialty: user.specialty,
-      medicalLicenseNo: user.medicalLicenseNo
-    }
   });
 });
 
