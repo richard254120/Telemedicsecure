@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../../context/AuthContext';
 import { API_BASE } from '../../config';
+import DoctorDashboard from './DoctorDashboard';
+import NurseDashboard from './NurseDashboard';
+import PatientDashboard from './PatientDashboard';
 import {
   ShieldAlert,
   ShieldCheck,
   Users,
+  User,
   FileCheck2,
   FileSearch,
   CheckCircle2,
@@ -53,6 +57,7 @@ export default function AdminDashboard() {
   const { user, getAuthHeaders } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'compliance' | 'users' | 'prescriptions' | 'investigation'>('compliance');
+  const [omniRoleView, setOmniRoleView] = useState<'ADMIN' | 'DOCTOR' | 'NURSE' | 'PATIENT'>('ADMIN');
 
   // State
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -304,9 +309,13 @@ export default function AdminDashboard() {
 
   const regulationData = [
     { name: 'HIPAA §164.312', count: violations.filter(v => v.rule?.regulation?.includes('HIPAA') || v.regulation?.includes('HIPAA')).length || 5 },
-    { name: 'GDPR Art. 9/17', count: violations.filter(v => v.rule?.regulation?.includes('GDPR') || v.regulation?.includes('GDPR')).length || 3 },
     { name: 'DEA EPCS', count: violations.filter(v => v.rule?.regulation?.includes('DEA') || v.regulation?.includes('DEA')).length || 2 }
   ];
+
+  const doctorCount = usersList.filter(u => u.role === 'DOCTOR').length;
+  const nurseCount = usersList.filter(u => u.role === 'NURSE').length;
+  const patientCount = usersList.filter(u => u.role === 'PATIENT').length;
+  const adminCount = usersList.filter(u => u.role === 'ADMIN').length;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 p-6 sm:p-10">
@@ -368,8 +377,295 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-2 overflow-x-auto pb-1">
+        {/* Omni-Role Viewport Selector (The Admin is able to see all the dashboards of all people) */}
+        <div className="bg-slate-900/90 p-3.5 rounded-3xl border border-slate-800 shadow-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 backdrop-blur-xl">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-purple-500/25 shrink-0">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-bold text-white">Omni-Role Executive Viewport</span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                  ALL ROLES OVERSIGHT
+                </span>
+              </div>
+              <p className="text-xs text-slate-400">
+                Inspect and operate the live dashboards of Doctors, Nurses, and Patients with administrator oversight privileges.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950 p-1.5 rounded-2xl border border-slate-800 flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setOmniRoleView('ADMIN')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+                omniRoleView === 'ADMIN'
+                  ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Shield className="w-4 h-4" />
+              <span>Admin Control Hub</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOmniRoleView('DOCTOR')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+                omniRoleView === 'DOCTOR'
+                  ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <Stethoscope className="w-4 h-4 text-blue-400" />
+              <span>Doctor Workstation ({doctorCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOmniRoleView('NURSE')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+                omniRoleView === 'NURSE'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <HeartPulse className="w-4 h-4 text-emerald-400" />
+              <span>Nursing Station ({nurseCount})</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOmniRoleView('PATIENT')}
+              className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center space-x-2 ${
+                omniRoleView === 'PATIENT'
+                  ? 'bg-cyan-600 text-white shadow-lg shadow-cyan-600/30'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
+            >
+              <User className="w-4 h-4 text-cyan-400" />
+              <span>Patient Portal ({patientCount})</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Dynamic Live Role Dashboards Inspected by Admin */}
+        {omniRoleView === 'DOCTOR' && (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="p-4 rounded-2xl bg-blue-950/60 border border-blue-500/40 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                  <Stethoscope className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <span>Administrator Oversight: Live Doctor Workstation</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      LIVE VIEW
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-300">
+                    Inspecting consultations queue, vitals telemetry, and e-Prescriptions as an Administrator.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setOmniRoleView('ADMIN')}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition"
+                >
+                  ← Back to Admin Hub
+                </button>
+                <button
+                  onClick={() => navigate('/doctor')}
+                  className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center space-x-1 shadow-lg shadow-blue-600/20"
+                >
+                  <span>Open Fullscreen</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <DoctorDashboard />
+          </div>
+        )}
+
+        {omniRoleView === 'NURSE' && (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="p-4 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <HeartPulse className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <span>Administrator Oversight: Live Nursing Station</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      LIVE VIEW
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-300">
+                    Inspecting triage telemetry, vitals entries, and assigned patients as an Administrator.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setOmniRoleView('ADMIN')}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition"
+                >
+                  ← Back to Admin Hub
+                </button>
+                <button
+                  onClick={() => navigate('/nurse')}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition flex items-center space-x-1 shadow-lg shadow-emerald-600/20"
+                >
+                  <span>Open Fullscreen</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <NurseDashboard />
+          </div>
+        )}
+
+        {omniRoleView === 'PATIENT' && (
+          <div className="space-y-4 animate-fadeIn">
+            <div className="p-4 rounded-2xl bg-cyan-950/60 border border-cyan-500/40 flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                  <User className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white flex items-center space-x-2">
+                    <span>Administrator Oversight: Live Patient Portal</span>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      LIVE VIEW
+                    </span>
+                  </h4>
+                  <p className="text-xs text-slate-300">
+                    Inspecting patient consultations, medical records, and GDPR privacy consents as an Administrator.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setOmniRoleView('ADMIN')}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold transition"
+                >
+                  ← Back to Admin Hub
+                </button>
+                <button
+                  onClick={() => navigate('/patient')}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition flex items-center space-x-1 shadow-lg shadow-cyan-600/20"
+                >
+                  <span>Open Fullscreen</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+            <PatientDashboard />
+          </div>
+        )}
+
+        {/* Administrator Primary Governance Suite */}
+        {omniRoleView === 'ADMIN' && (
+          <>
+            {/* Cross-Role System Workstations Overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-blue-500/30 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Stethoscope className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">
+                    {doctorCount} Doctors
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Doctor Workstation</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">Consultations, e-Prescribe & Vitals review</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOmniRoleView('DOCTOR')}
+                  className="w-full py-2 rounded-xl bg-blue-600/20 hover:bg-blue-600 text-blue-300 hover:text-white font-semibold text-xs transition border border-blue-500/30 flex items-center justify-center space-x-1.5"
+                >
+                  <span>Inspect Doctor Station</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-emerald-500/30 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <HeartPulse className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                    {nurseCount} Nurses
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Nursing Triage Station</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">Biometric vitals entry & patient monitoring</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOmniRoleView('NURSE')}
+                  className="w-full py-2 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white font-semibold text-xs transition border border-emerald-500/30 flex items-center justify-center space-x-1.5"
+                >
+                  <span>Inspect Nursing Station</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-cyan-500/30 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2 py-0.5 rounded-full">
+                    {patientCount} Patients
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Patient Portal</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">Telehealth consults, records & privacy</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOmniRoleView('PATIENT')}
+                  className="w-full py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white font-semibold text-xs transition border border-cyan-500/30 flex items-center justify-center space-x-1.5"
+                >
+                  <span>Inspect Patient Portal</span>
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-purple-500/30 shadow-lg space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <ShieldAlert className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-purple-400 bg-purple-500/10 px-2 py-0.5 rounded-full">
+                    {adminCount} Admins
+                  </span>
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-white">Staff Provisioning</h4>
+                  <p className="text-xs text-slate-400 mt-0.5">Create Doctors, Nurses & Admins</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('users')}
+                  className="w-full py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition shadow-lg shadow-purple-600/20 flex items-center justify-center space-x-1.5"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>Provision New Staff</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex border-b border-slate-800 gap-2 overflow-x-auto pb-1">
           {[
             { id: 'compliance', label: 'Forensic Compliance Dashboard', icon: ShieldAlert, count: violations.length },
             { id: 'users', label: 'User & Role Management', icon: Users, count: usersList.length },
@@ -1216,6 +1512,8 @@ export default function AdminDashboard() {
               )}
             </div>
           </div>
+        )}
+          </>
         )}
       </div>
     </div>

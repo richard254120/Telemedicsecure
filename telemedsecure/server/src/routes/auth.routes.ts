@@ -168,61 +168,12 @@ router.post('/register-staff', async (req, res) => {
   }
 });
 
-// 3. PRACTITIONER APPLICATION (Self-Application for Doctor / Nurse credential review)
+// 3. PRACTITIONER APPLICATION (Disabled - Staff accounts must be provisioned directly by Admin)
 router.post('/apply-practitioner', async (req, res) => {
-  try {
-    const {
-      email,
-      password,
-      firstName,
-      lastName,
-      role,
-      medicalLicenseNo,
-      licenseJurisdiction,
-      specialty
-    } = req.body;
-
-    if (!email || !password || !firstName || !lastName || !medicalLicenseNo) {
-      return res.status(400).json({ error: 'All fields including Medical License Number are required' });
-    }
-
-    if (![Role.DOCTOR, Role.NURSE].includes(role)) {
-      return res.status(400).json({ error: 'Only Doctor or Nurse roles can be applied for' });
-    }
-
-    const pwdErr = validatePassword(password);
-    if (pwdErr) return res.status(400).json({ error: pwdErr });
-
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
-
-    const passwordHash = await argon2.hash(password);
-
-    const user = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        firstName,
-        lastName,
-        role,
-        verificationStatus: VerificationStatus.PENDING_REVIEW,
-        medicalLicenseNo,
-        licenseJurisdiction: licenseJurisdiction || 'US-NPI',
-        specialty: specialty || 'General Practice',
-        isActive: true
-      }
-    });
-
-    await logAudit('PRACTITIONER_APPLICATION_SUBMITTED', 'AUTH', user.id, req.ip);
-
-    res.status(201).json({
-      message: 'Practitioner application submitted. Clinical credentials are pending administrative review and approval before login access is granted.',
-      user: { id: user.id, email: user.email, role: user.role, status: 'PENDING_REVIEW' }
-    });
-  } catch (error: any) {
-    console.error('Practitioner application error:', error);
-    res.status(500).json({ error: 'Application failed. Please try again.' });
-  }
+  await logAudit('UNAUTHORIZED_PRACTITIONER_SELF_REGISTRATION_ATTEMPT', 'AUTH', null, req.ip);
+  return res.status(403).json({
+    error: 'Self-registration for clinical staff is disabled. All Doctor, Nurse, and Administrative accounts must be created directly by Hospital Administration.'
+  });
 });
 
 router.post('/login', async (req, res) => {

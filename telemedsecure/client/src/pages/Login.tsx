@@ -14,10 +14,9 @@ import {
   EyeOff,
   Mail,
   Lock,
-  Ticket,
-  AlertCircle,
   Sparkles,
-  Info
+  Info,
+  LockKeyhole
 } from 'lucide-react';
 
 type PortalType = 'PATIENT' | 'STAFF';
@@ -38,50 +37,38 @@ export default function Login() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Patient registration toggle
+  // Patient registration toggle (ONLY Patients can register)
   const [isRegister, setIsRegister] = useState(false);
-  const [hasStaffInvite, setHasStaffInvite] = useState(false);
 
-  // Form fields
+  // Form fields for Patient Registration
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [invitationToken, setInvitationToken] = useState('');
-  const [medicalLicenseNo, setMedicalLicenseNo] = useState('');
-  const [licenseJurisdiction, setLicenseJurisdiction] = useState('US-NPI');
-  const [specialty, setSpecialty] = useState('General Practice');
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
-  // Parse portal and invite tokens from URL query (e.g. /login?portal=staff or /login?invite=abc)
+  // Parse portal from URL query (e.g. /login?portal=staff or /login?portal=patient)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const portalParam = params.get('portal');
-    const inviteParam = params.get('invite');
     const emailParam = params.get('email');
 
     if (portalParam === 'staff') {
       setActivePortal('STAFF');
+      setIsRegister(false);
     } else if (portalParam === 'patient') {
       setActivePortal('PATIENT');
     }
 
-    if (inviteParam) {
-      setActivePortal('STAFF');
-      setHasStaffInvite(true);
-      setIsRegister(true);
-      setInvitationToken(inviteParam);
-      if (emailParam) {
-        setEmail(emailParam);
-      }
+    if (emailParam) {
+      setEmail(emailParam);
     }
   }, [location.search]);
 
-  // Demo credentials quick fill
+  // Demo credentials quick fill for testing and evaluation
   const handleFillDemo = (role: 'ADMIN' | 'DOCTOR' | 'NURSE' | 'PATIENT') => {
     setError(null);
     setSuccessMessage(null);
     setIsRegister(false);
-    setHasStaffInvite(false);
 
     if (role === 'ADMIN') {
       setActivePortal('STAFF');
@@ -124,10 +111,6 @@ export default function Login() {
       if (!lastName || lastName.trim().length < 2) {
         errors.lastName = 'Last name must be at least 2 characters';
       }
-
-      if (hasStaffInvite && !invitationToken.trim()) {
-        errors.invitationToken = 'Staff invitation token is required';
-      }
     }
 
     setValidationErrors(errors);
@@ -144,25 +127,15 @@ export default function Login() {
     setLoading(true);
 
     if (isRegister) {
+      // ONLY PATIENT self-registration is allowed
       try {
-        let endpoint = `${API_BASE}/auth/register`;
-        let payload: any = {
+        const endpoint = `${API_BASE}/auth/register`;
+        const payload = {
           email: email.trim().toLowerCase(),
           password,
           firstName: firstName.trim(),
           lastName: lastName.trim()
         };
-
-        if (hasStaffInvite) {
-          endpoint = `${API_BASE}/auth/register-staff`;
-          payload = {
-            ...payload,
-            invitationToken: invitationToken.trim(),
-            medicalLicenseNo: medicalLicenseNo.trim() || undefined,
-            licenseJurisdiction,
-            specialty
-          };
-        }
 
         const res = await fetch(endpoint, {
           method: 'POST',
@@ -174,12 +147,9 @@ export default function Login() {
 
         if (res.ok) {
           setSuccessMessage(
-            hasStaffInvite
-              ? 'Staff account onboarding complete! You may now sign in with your verified credentials.'
-              : 'Patient account created successfully! You can now sign in with your email and password.'
+            'Patient account created successfully! You can now sign in with your email and password.'
           );
           setIsRegister(false);
-          setHasStaffInvite(false);
           setPassword('');
           setValidationErrors({});
         } else {
@@ -248,7 +218,6 @@ export default function Login() {
             onClick={() => {
               setActivePortal('STAFF');
               setIsRegister(false);
-              setHasStaffInvite(false);
               setError(null);
               setSuccessMessage(null);
               setValidationErrors({});
@@ -268,33 +237,31 @@ export default function Login() {
         <div className="bg-slate-900/80 py-8 px-6 sm:px-10 shadow-2xl rounded-3xl border border-slate-800 backdrop-blur-xl">
           <div className="mb-6">
             <h3 className="text-xl font-bold text-white text-center">
-              {isRegister
-                ? hasStaffInvite
-                  ? 'Clinical Staff Invitation Registration'
-                  : 'Create Patient Account'
-                : activePortal === 'PATIENT'
-                  ? 'Patient Sign In'
-                  : 'Hospital Staff Sign In'}
+              {activePortal === 'PATIENT'
+                ? isRegister
+                  ? 'Create Patient Account'
+                  : 'Patient Sign In'
+                : 'Hospital Staff Sign In'}
             </h3>
             <p className="text-xs text-slate-400 text-center mt-1">
               {activePortal === 'PATIENT'
                 ? isRegister
-                  ? 'Register self-service to access encrypted telemedicine appointments.'
+                  ? 'Register self-service to book consultations and access medical records.'
                   : 'Access your appointments, consultations, and prescriptions.'
-                : 'Doctors, Nurses, and Administrators sign in with clinic-issued credentials.'}
+                : 'Doctors, Nurses, and Administrators sign in with clinic-provisioned credentials.'}
             </p>
           </div>
 
-          {/* Clinical Staff Access Notice */}
-          {activePortal === 'STAFF' && !isRegister && (
+          {/* Clinical Staff Access Notice - STRICT RULE: Accounts must be created by Admin */}
+          {activePortal === 'STAFF' && (
             <div className="mb-6 p-4 rounded-2xl bg-blue-950/40 border border-blue-500/30 text-blue-200 text-xs space-y-1.5">
               <div className="flex items-center space-x-2 font-bold text-blue-300">
-                <Info className="w-4 h-4 text-blue-400 shrink-0" />
-                <span>Enterprise Clinical Access Policy</span>
+                <LockKeyhole className="w-4 h-4 text-blue-400 shrink-0" />
+                <span>Hospital Administration Policy</span>
               </div>
               <p className="text-[11px] text-slate-300 leading-relaxed">
-                Doctor, Nurse, and Admin accounts are <strong className="text-white">provisioned directly by Healthcare Administration</strong>.
-                Unauthorized self-registration is strictly restricted. Please use the initial credentials provided by your Hospital Administrator.
+                Doctor, Nurse, and Administrator accounts are <strong className="text-white">created directly by Healthcare Administration</strong>.
+                Self-registration is strictly restricted for clinical personnel. Please sign in using the official credentials provided to you by your Clinic Administrator.
               </p>
             </div>
           )}
@@ -314,104 +281,50 @@ export default function Login() {
           )}
 
           <form className="space-y-4" onSubmit={handleSubmit}>
-            {/* Registration fields for patient or invited staff */}
-            {isRegister && (
-              <>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                      First Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={e => setFirstName(e.target.value)}
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                        validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
-                      placeholder="e.g. Jane"
-                    />
-                    {validationErrors.firstName && (
-                      <p className="text-[10px] text-red-400 mt-1">{validationErrors.firstName}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                      Last Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={e => setLastName(e.target.value)}
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                        validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
-                      placeholder="e.g. Doe"
-                    />
-                    {validationErrors.lastName && (
-                      <p className="text-[10px] text-red-400 mt-1">{validationErrors.lastName}</p>
-                    )}
-                  </div>
+            {/* Registration fields for Patient only */}
+            {isRegister && activePortal === 'PATIENT' && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    First Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={e => setFirstName(e.target.value)}
+                    className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
+                      validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                    }`}
+                    placeholder="e.g. Jane"
+                  />
+                  {validationErrors.firstName && (
+                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.firstName}</p>
+                  )}
                 </div>
-
-                {hasStaffInvite && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                        Staff Invitation Token *
-                      </label>
-                      <div className="relative">
-                        <Ticket className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-purple-400" />
-                        <input
-                          type="text"
-                          value={invitationToken}
-                          onChange={e => setInvitationToken(e.target.value)}
-                          className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white font-mono text-xs placeholder-slate-500 focus:outline-none ${
-                            validationErrors.invitationToken ? 'border-red-500' : 'border-slate-800 focus:border-purple-500'
-                          }`}
-                          placeholder="Paste 64-character invite token"
-                        />
-                      </div>
-                      {validationErrors.invitationToken && (
-                        <p className="text-[10px] text-red-400 mt-1">{validationErrors.invitationToken}</p>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                          Medical License / NPI #
-                        </label>
-                        <input
-                          type="text"
-                          value={medicalLicenseNo}
-                          onChange={e => setMedicalLicenseNo(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-500 font-mono"
-                          placeholder="NPI-1928374829"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                          Specialty
-                        </label>
-                        <input
-                          type="text"
-                          value={specialty}
-                          onChange={e => setSpecialty(e.target.value)}
-                          className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-purple-500"
-                          placeholder="Cardiology"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Last Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={e => setLastName(e.target.value)}
+                    className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
+                      validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                    }`}
+                    placeholder="e.g. Doe"
+                  />
+                  {validationErrors.lastName && (
+                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.lastName}</p>
+                  )}
+                </div>
+              </div>
             )}
 
             {/* Email Address */}
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                Work / Account Email *
+                {activePortal === 'STAFF' ? 'Work / Staff Email *' : 'Account Email *'}
               </label>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -422,7 +335,7 @@ export default function Login() {
                   className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
                     validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                   }`}
-                  placeholder={activePortal === 'STAFF' ? 'doctor@hospital.org' : 'patient@example.com'}
+                  placeholder={activePortal === 'STAFF' ? 'doctor@telemed.com' : 'patient@example.com'}
                 />
               </div>
               {validationErrors.email && (
@@ -436,9 +349,9 @@ export default function Login() {
                 <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
                   Password *
                 </label>
-                {!isRegister && activePortal === 'STAFF' && (
+                {activePortal === 'STAFF' && (
                   <span className="text-[10px] text-slate-500">
-                    Use password set by admin
+                    Use password provided by admin
                   </span>
                 )}
               </div>
@@ -481,9 +394,7 @@ export default function Login() {
                 {loading
                   ? 'Authenticating...'
                   : isRegister
-                    ? hasStaffInvite
-                      ? 'Accept Invitation & Complete Registration'
-                      : 'Create Patient Account'
+                    ? 'Create Patient Account'
                     : `Sign In to ${activePortal === 'STAFF' ? 'Clinical Portal' : 'Patient Portal'}`}
               </span>
             </button>
@@ -508,36 +419,8 @@ export default function Login() {
                   : "Don't have an account? Register as a New Patient →"}
               </button>
             ) : (
-              <div>
-                {!isRegister ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRegister(true);
-                      setHasStaffInvite(true);
-                      setError(null);
-                      setSuccessMessage(null);
-                      setValidationErrors({});
-                    }}
-                    className="text-[11px] text-purple-400 hover:text-purple-300"
-                  >
-                    Have a Clinic Invitation Token from your Administrator? Redeem here →
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsRegister(false);
-                      setHasStaffInvite(false);
-                      setError(null);
-                      setSuccessMessage(null);
-                      setValidationErrors({});
-                    }}
-                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold"
-                  >
-                    ← Back to Staff Sign In
-                  </button>
-                )}
+              <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-400">
+                <span className="font-semibold text-slate-300">Staff Access Notice:</span> Only clinic administrators can create Doctor, Nurse, and Administrative accounts. If you require credentials, please contact your Hospital Administration.
               </div>
             )}
           </div>
@@ -548,9 +431,9 @@ export default function Login() {
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Fast Demo Role Credentials</span>
+              <span>Evaluation & Fast Demo Login</span>
             </span>
-            <span className="text-[10px] text-slate-500">One-click evaluation fill</span>
+            <span className="text-[10px] text-slate-500">1-click test fill</span>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             <button
