@@ -1,9 +1,10 @@
+import crypto from 'crypto';
 import { Router } from 'express';
 import argon2 from 'argon2';
 import * as bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import * as speakeasy from 'speakeasy';
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient, Role, VerificationStatus } from '@prisma/client';
 import { requireAuth } from '../middlewares/auth';
 
 const router = Router();
@@ -28,11 +29,20 @@ const logAudit = async (action: string, resource: string, userId?: string | null
   });
 };
 
+const validatePassword = (password: string) => {
+  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
+    return 'Password must contain uppercase, lowercase, and number';
+  }
+  return null;
+};
+
+// 1. PUBLIC PATIENT REGISTRATION (Self-Service)
+// Strictly restricted to Role.PATIENT. Privileged roles are prohibited.
 router.post('/register', async (req, res) => {
   try {
     const { email, password, firstName, lastName, role } = req.body;
 
-    // Validation
     if (!email || !password || !firstName || !lastName) {
       return res.status(400).json({ error: 'All fields are required' });
     }
@@ -41,33 +51,177 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Invalid email format' });
     }
 
-    if (password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
-    }
-
-    if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(password)) {
-      return res.status(400).json({ error: 'Password must contain uppercase, lowercase, and number' });
-    }
+    const pwdErr = validatePassword(password);
+    if (pwdErr) return res.status(400).json({ error: pwdErr });
 
     if (firstName.length < 2 || lastName.length < 2) {
       return res.status(400).json({ error: 'Names must be at least 2 characters' });
+    }
+
+    // Security check: Reject any attempt to self-assign privileged clinical or admin roles
+    if (role && role !== Role.PATIENT) {
+      return res.status(400).json({
+        error: 'Privileged clinical or administrative roles cannot be self-assigned. Practitioners must register with an invitation code or submit a credential application.'
+      });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
 
     const passwordHash = await argon2.hash(password);
-    const userRole = Object.values(Role).includes(role) ? role : Role.PATIENT;
 
     const user = await prisma.user.create({
-      data: { email, passwordHash, firstName, lastName, role: userRole }
+      data: {
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role: Role.PATIENT,
+        verificationStatus: VerificationStatus.VERIFIED,
+        isActive: true
+      }
     });
 
-    await logAudit('REGISTER', 'AUTH', user.id, req.ip);
-    res.status(201).json({ message: 'User registered successfully', user: { id: user.id, email: user.email, role: user.role } });
+    await logAudit('REGISTER_PATIENT', 'AUTH', user.id, req.ip);
+    res.status(201).json({
+      message: 'Patient account registered successfully',
+      user: { id: user.id, email: user.email, role: user.role }
+    });
   } catch (error: any) {
     console.error('Registration error:', error);
     res.status(500).json({ error: 'Registration failed. Please try again.' });
+  }
+});
+
+// 2. STAFF REGISTRATION VIA INVITATION TOKEN
+// For Doctors, Nurses, or Administrators invited by clinic leadership
+router.post('/register-staff', async (req, res) => {
+  try {
+    const {
+      invitationToken,
+      email,
+      password,
+      firstName,
+      lastName,
+      medicalLicenseNo,
+      licenseJurisdiction,
+      specialty
+    } = req.body;
+
+    if (!invitationToken || !email || !password || !firstName || !lastName) {
+      return res.status(400).json({ error: 'Invitation token, email, name, and password are required' });
+    }
+
+    const pwdErr = validatePassword(password);
+    if (pwdErr) return res.status(400).json({ error: pwdErr });
+
+    const tokenHash = crypto.createHash('sha256').update(invitationToken.trim()).digest('hex');
+
+    const invitation = await prisma.staffInvitation.findUnique({
+      where: { tokenHash }
+    });
+
+    if (!invitation || invitation.isAccepted || invitation.expiresAt < new Date()) {
+      return res.status(400).json({ error: 'Invalid, expired, or already used invitation token' });
+    }
+
+    if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+      return res.status(400).json({ error: `Invitation token was issued for ${invitation.email}, not ${email}` });
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
+
+    const passwordHash = await argon2.hash(password);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role: invitation.role,
+        verificationStatus: VerificationStatus.VERIFIED,
+        medicalLicenseNo: medicalLicenseNo || null,
+        licenseJurisdiction: licenseJurisdiction || null,
+        specialty: specialty || null,
+        verifiedAt: new Date(),
+        verifiedById: invitation.invitedById,
+        isActive: true
+      }
+    });
+
+    await prisma.staffInvitation.update({
+      where: { id: invitation.id },
+      data: { isAccepted: true }
+    });
+
+    await logAudit('STAFF_REGISTER_INVITED', 'AUTH', user.id, req.ip);
+
+    res.status(201).json({
+      message: `Staff account (${user.role}) registered and verified successfully`,
+      user: { id: user.id, email: user.email, role: user.role }
+    });
+  } catch (error: any) {
+    console.error('Staff registration error:', error);
+    res.status(500).json({ error: 'Staff registration failed. Please try again.' });
+  }
+});
+
+// 3. PRACTITIONER APPLICATION (Self-Application for Doctor / Nurse credential review)
+router.post('/apply-practitioner', async (req, res) => {
+  try {
+    const {
+      email,
+      password,
+      firstName,
+      lastName,
+      role,
+      medicalLicenseNo,
+      licenseJurisdiction,
+      specialty
+    } = req.body;
+
+    if (!email || !password || !firstName || !lastName || !medicalLicenseNo) {
+      return res.status(400).json({ error: 'All fields including Medical License Number are required' });
+    }
+
+    if (![Role.DOCTOR, Role.NURSE].includes(role)) {
+      return res.status(400).json({ error: 'Only Doctor or Nurse roles can be applied for' });
+    }
+
+    const pwdErr = validatePassword(password);
+    if (pwdErr) return res.status(400).json({ error: pwdErr });
+
+    const existingUser = await prisma.user.findUnique({ where: { email } });
+    if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
+
+    const passwordHash = await argon2.hash(password);
+
+    const user = await prisma.user.create({
+      data: {
+        email,
+        passwordHash,
+        firstName,
+        lastName,
+        role,
+        verificationStatus: VerificationStatus.PENDING_REVIEW,
+        medicalLicenseNo,
+        licenseJurisdiction: licenseJurisdiction || 'US-NPI',
+        specialty: specialty || 'General Practice',
+        isActive: true
+      }
+    });
+
+    await logAudit('PRACTITIONER_APPLICATION_SUBMITTED', 'AUTH', user.id, req.ip);
+
+    res.status(201).json({
+      message: 'Practitioner application submitted. Clinical credentials are pending administrative review and approval before login access is granted.',
+      user: { id: user.id, email: user.email, role: user.role, status: 'PENDING_REVIEW' }
+    });
+  } catch (error: any) {
+    console.error('Practitioner application error:', error);
+    res.status(500).json({ error: 'Application failed. Please try again.' });
   }
 });
 
@@ -108,6 +262,21 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
+  // Security gate: Verify clinical practitioner credential approval
+  if (user.role !== Role.PATIENT && user.verificationStatus === VerificationStatus.PENDING_REVIEW) {
+    await logAudit('LOGIN_BLOCKED_PENDING_VERIFICATION', 'AUTH', user.id, req.ip);
+    return res.status(403).json({
+      error: 'Clinical credential verification pending. A medical administrator must verify your medical license before access is granted.'
+    });
+  }
+
+  if (user.verificationStatus === VerificationStatus.REJECTED) {
+    await logAudit('LOGIN_BLOCKED_REJECTED', 'AUTH', user.id, req.ip);
+    return res.status(403).json({
+      error: 'Your practitioner verification was rejected. Please contact clinical administration.'
+    });
+  }
+
   if (user.totpSecret && !totp) {
     return res.status(401).json({ error: 'TOTP required' });
   }
@@ -132,7 +301,10 @@ router.post('/login', async (req, res) => {
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
-      role: user.role
+      role: user.role,
+      verificationStatus: user.verificationStatus,
+      specialty: user.specialty,
+      medicalLicenseNo: user.medicalLicenseNo
     }
   });
 });
@@ -144,7 +316,10 @@ router.get('/me', requireAuth, async (req, res) => {
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
-    role: user.role
+    role: user.role,
+    verificationStatus: user.verificationStatus,
+    specialty: user.specialty,
+    medicalLicenseNo: user.medicalLicenseNo
   });
 });
 

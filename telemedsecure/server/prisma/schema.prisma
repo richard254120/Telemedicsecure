@@ -14,6 +14,13 @@ enum Role {
   ADMIN
 }
 
+enum VerificationStatus {
+  UNVERIFIED
+  PENDING_REVIEW
+  VERIFIED
+  REJECTED
+}
+
 enum ConsultationStatus {
   SCHEDULED
   IN_PROGRESS
@@ -51,6 +58,14 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
+  // Verification & Clinical Credentials
+  verificationStatus VerificationStatus @default(VERIFIED)
+  medicalLicenseNo   String?
+  licenseJurisdiction String?
+  specialty          String?
+  verifiedAt         DateTime?
+  verifiedById       String?
+
   // Doctor Ed25519 Cryptographic Keys (private key encrypted with doctor password-derived key)
   doctorPublicKey         String?
   doctorEncryptedPrivKey  String?
@@ -66,6 +81,19 @@ model User {
   ClinicalFlag         ClinicalFlag[]
   consents             Consent[]
   erasureRequests      ErasureRequest[]
+  staffInvitations     StaffInvitation[] @relation("AdminStaffInvitations")
+}
+
+model StaffInvitation {
+  id          String   @id @default(uuid())
+  email       String
+  role        Role
+  tokenHash   String   @unique
+  invitedById String
+  invitedBy   User     @relation("AdminStaffInvitations", fields: [invitedById], references: [id])
+  expiresAt   DateTime
+  isAccepted  Boolean  @default(false)
+  createdAt   DateTime @default(now())
 }
 
 model Consultation {

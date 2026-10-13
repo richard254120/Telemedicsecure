@@ -45,7 +45,56 @@ export const requireRole = (allowedRoles: Role[]) => {
       }
       return res.status(403).json({ error: 'Forbidden: Insufficient permissions' });
     }
+
+    if ([Role.DOCTOR, Role.NURSE].includes(user.role) && user.verificationStatus !== 'VERIFIED') {
+      try {
+        const { rulesEngine } = await import('../services/rulesEngine.service');
+        await rulesEngine.triggerViolation({
+          ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+          description: `Unverified practitioner ${user.id} (${user.role}) attempted to access clinical resource: ${req.originalUrl}`,
+          userId: user.id,
+          resource: req.originalUrl,
+          sourceIp: req.ip || 'unknown',
+          metadata: { requiredRoles: allowedRoles, currentRole: user.role, verificationStatus: user.verificationStatus }
+        });
+      } catch (e) {
+        console.error('RulesEngine trigger failed:', e);
+      }
+      return res.status(403).json({
+        error: 'Forbidden: Clinical credentials pending administrative review and verification'
+      });
+    }
     
     next();
   };
+};
+
+export const requireVerifiedStaff = async (req: Request, res: Response, next: NextFunction) => {
+  const user = (req as any).user;
+  if (!user) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  if (['DOCTOR', 'NURSE'].includes(user.role)) {
+    if (user.verificationStatus !== 'VERIFIED') {
+      try {
+        const { rulesEngine } = await import('../services/rulesEngine.service');
+        await rulesEngine.triggerViolation({
+          ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+          description: `Unverified practitioner ${user.id} (${user.role}) attempted to access clinical resource: ${req.originalUrl}`,
+          userId: user.id,
+          resource: req.originalUrl,
+          sourceIp: req.ip || 'unknown',
+          metadata: { verificationStatus: user.verificationStatus, role: user.role }
+        });
+      } catch (e) {
+        console.error('RulesEngine trigger failed:', e);
+      }
+      return res.status(403).json({
+        error: 'Forbidden: Clinical credentials pending administrative review and verification'
+      });
+    }
+  }
+
+  next();
 };

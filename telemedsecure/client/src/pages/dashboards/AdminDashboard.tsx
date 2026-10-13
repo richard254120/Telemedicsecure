@@ -23,7 +23,14 @@ import {
   Flame,
   Activity,
   FileText,
-  Calendar
+  Calendar,
+  Ticket,
+  Send,
+  Copy,
+  Check,
+  Award,
+  Stethoscope,
+  HeartPulse
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -52,8 +59,16 @@ export default function AdminDashboard() {
   const [chainStatus, setChainStatus] = useState<any | null>(null);
   const [prescriptionAudits, setPrescriptionAudits] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
+  const [invitations, setInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+
+  // Invitation creation state
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState<UserRole>('DOCTOR');
+  const [inviteHours, setInviteHours] = useState(48);
+  const [generatedInvite, setGeneratedInvite] = useState<{ token: string; link: string; email: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   // Modal / drawer state for prescription audit inspection
   const [inspectedRx, setInspectedRx] = useState<any | null>(null);
@@ -66,13 +81,14 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [uRes, vRes, aRes, cRes, rxRes, incRes] = await Promise.all([
+      const [uRes, vRes, aRes, cRes, rxRes, incRes, invRes] = await Promise.all([
         fetch(`${API_BASE}/admin/users`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/compliance/violations`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/compliance/alerts`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/integrity/verify`, { headers }).then(r => r.ok ? r.json() : null),
         fetch(`${API_BASE}/prescriptions/audit/all`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/investigation/incidents`, { headers }).then(r => r.ok ? r.json() : [])
+        fetch(`${API_BASE}/investigation/incidents`, { headers }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE}/admin/invitations`, { headers }).then(r => r.ok ? r.json() : [])
       ]);
 
       setUsersList(Array.isArray(uRes) ? uRes : []);
@@ -81,10 +97,76 @@ export default function AdminDashboard() {
       setChainStatus(cRes);
       setPrescriptionAudits(Array.isArray(rxRes) ? rxRes : []);
       setIncidents(Array.isArray(incRes) ? incRes : []);
+      setInvitations(Array.isArray(invRes) ? invRes : []);
     } catch (e) {
       console.error('Failed to load admin dashboard data', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Practitioner credential review action
+  const handleVerifyCredentials = async (targetUserId: string, verificationStatus: 'VERIFIED' | 'REJECTED') => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/users/${targetUserId}/verify-credentials`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify({ verificationStatus })
+      });
+      if (res.ok) {
+        setActionMessage(`Practitioner credential status updated to ${verificationStatus}`);
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 3500);
+      }
+    } catch (e: any) {
+      console.error('Verify credentials failed:', e);
+    }
+  };
+
+  // Issue staff invitation
+  const handleCreateInvitation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inviteEmail) return;
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/invitations`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresInHours: inviteHours })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const inviteLink = `${window.location.origin}/login?invite=${data.token}&email=${encodeURIComponent(inviteEmail)}`;
+        setGeneratedInvite({ token: data.token, link: inviteLink, email: inviteEmail });
+        setInviteEmail('');
+        setActionMessage(`Issued single-use ${inviteRole} onboarding invitation`);
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 5000);
+      } else {
+        setActionMessage(data.error || 'Failed to issue invitation');
+        setTimeout(() => setActionMessage(null), 4000);
+      }
+    } catch (err: any) {
+      console.error('Create invitation error:', err);
+    }
+  };
+
+  // Revoke staff invitation
+  const handleRevokeInvitation = async (invitationId: string) => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/invitations/${invitationId}`, {
+        method: 'DELETE',
+        headers
+      });
+      if (res.ok) {
+        setActionMessage('Staff invitation revoked');
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 3500);
+      }
+    } catch (err: any) {
+      console.error('Revoke invitation error:', err);
     }
   };
 
@@ -397,28 +479,241 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* Tab 2: User & Role Management */}
+        {/* Tab 2: User & Role Management & Credential Governance */}
         {activeTab === 'users' && (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
+          <div className="space-y-6">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
               <div>
                 <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                   <Users className="w-5 h-5 text-purple-400" />
-                  <span>Clinical Workstation User Directory</span>
+                  <span>Clinical Identity Governance & RBAC Management</span>
                 </h2>
                 <p className="text-xs text-slate-400 mt-1">
-                  Manage Role-Based Access Control (RBAC), account active states, and 2FA secrets.
+                  Enforce medical license verification, issue single-use staff invitations, and supervise active role assignments.
                 </p>
               </div>
             </div>
 
+            {/* 1. Practitioner Credential Review Queue */}
+            <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 p-6 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-700/70 pb-3">
+                <div className="flex items-center space-x-2">
+                  <Award className="w-5 h-5 text-amber-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Practitioner Credential Review Queue
+                  </h3>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    {usersList.filter(u => u.verificationStatus === 'PENDING_REVIEW').length} Pending
+                  </span>
+                </div>
+                <span className="text-[11px] text-slate-400">HIPAA §164.308(a)(3) Workforce Credentialing</span>
+              </div>
+
+              {usersList.filter(u => u.verificationStatus === 'PENDING_REVIEW').length === 0 ? (
+                <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 text-center text-xs text-slate-400 flex items-center justify-center space-x-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>All practitioner credentials verified. No pending medical license reviews.</span>
+                </div>
+              ) : (
+                <div className="grid gap-3">
+                  {usersList
+                    .filter(u => u.verificationStatus === 'PENDING_REVIEW')
+                    .map(applicant => (
+                      <div
+                        key={applicant.id}
+                        className="p-4 rounded-2xl bg-slate-900/80 border border-amber-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4"
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center space-x-2">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                              {applicant.role} APPLICANT
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              {applicant.firstName} {applicant.lastName}
+                            </span>
+                            <span className="text-xs text-slate-400 font-mono">({applicant.email})</span>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-3 text-xs text-slate-300">
+                            <span>
+                              <strong className="text-slate-400">License / NPI:</strong>{' '}
+                              <span className="font-mono text-cyan-400 font-semibold">{applicant.medicalLicenseNo || 'N/A'}</span>
+                            </span>
+                            <span>•</span>
+                            <span>
+                              <strong className="text-slate-400">Jurisdiction:</strong> {applicant.licenseJurisdiction || 'US-NPI'}
+                            </span>
+                            <span>•</span>
+                            <span>
+                              <strong className="text-slate-400">Specialty:</strong> {applicant.specialty || 'General'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          <button
+                            onClick={() => handleVerifyCredentials(applicant.id, 'VERIFIED')}
+                            className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1 shadow-md shadow-emerald-600/20"
+                          >
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Verify & Approve</span>
+                          </button>
+                          <button
+                            onClick={() => handleVerifyCredentials(applicant.id, 'REJECTED')}
+                            className="px-3.5 py-1.5 rounded-xl bg-red-600/20 hover:bg-red-600/30 border border-red-500/30 text-red-300 font-semibold text-xs transition flex items-center space-x-1"
+                          >
+                            <UserX className="w-3.5 h-3.5" />
+                            <span>Reject</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+
+            {/* 2. Issue Single-Use Staff Invitation */}
+            <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 p-6 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-700/70 pb-3">
+                <div className="flex items-center space-x-2">
+                  <Ticket className="w-5 h-5 text-cyan-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Issue Clinical Staff Invitation
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400">Restricted Admin Delegation</span>
+              </div>
+
+              <form onSubmit={handleCreateInvitation} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Staff Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    placeholder="doctor.specialist@telemed.com"
+                    required
+                    className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Authorized Role
+                  </label>
+                  <select
+                    value={inviteRole}
+                    onChange={e => setInviteRole(e.target.value as UserRole)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-cyan-500"
+                  >
+                    <option value="DOCTOR">DOCTOR (Physician)</option>
+                    <option value="NURSE">NURSE (Clinical Practitioner)</option>
+                    <option value="ADMIN">ADMIN (System Administrator)</option>
+                  </select>
+                </div>
+
+                <div className="flex items-end">
+                  <button
+                    type="submit"
+                    className="w-full py-2 px-4 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs transition shadow-md shadow-cyan-600/20 flex items-center justify-center space-x-1.5"
+                  >
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Generate Invite</span>
+                  </button>
+                </div>
+              </form>
+
+              {generatedInvite && (
+                <div className="p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 space-y-2 mt-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-cyan-300 flex items-center space-x-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                      <span>Invitation Link Generated for {generatedInvite.email}</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(generatedInvite.link);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2500);
+                      }}
+                      className="px-3 py-1 rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 hover:bg-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1"
+                    >
+                      {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copied ? 'Copied Link!' : 'Copy Invitation Link'}</span>
+                    </button>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 font-mono text-[11px] text-slate-300 break-all select-all">
+                    {generatedInvite.link}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    Token: <span className="font-mono text-cyan-400">{generatedInvite.token.substring(0, 16)}...</span> (Expires in 48 hours. Can be used exactly once.)
+                  </p>
+                </div>
+              )}
+
+              {/* Active invitations list */}
+              {invitations.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-slate-700/60 space-y-2">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    Recent Staff Invitations ({invitations.length})
+                  </div>
+                  <div className="grid gap-2 max-h-48 overflow-y-auto pr-1">
+                    {invitations.slice(0, 5).map(inv => (
+                      <div
+                        key={inv.id}
+                        className="px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center space-x-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            inv.isAccepted
+                              ? 'bg-slate-700 text-slate-400'
+                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                          }`}>
+                            {inv.role}
+                          </span>
+                          <span className="font-semibold text-white">{inv.email}</span>
+                          <span className="text-[10px] text-slate-500 font-mono">
+                            Expires: {new Date(inv.expiresAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {inv.isAccepted ? (
+                            <span className="text-[10px] text-emerald-400 font-semibold flex items-center space-x-1">
+                              <Check className="w-3 h-3" />
+                              <span>Accepted</span>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => handleRevokeInvitation(inv.id)}
+                              className="text-[10px] text-red-400 hover:text-red-300 font-semibold"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Clinical Workstation User Directory */}
             <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 shadow-lg overflow-hidden">
+              <div className="p-4 border-b border-slate-700 bg-slate-900/40 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Active Clinical Workstation User Directory
+                </h3>
+                <span className="text-xs text-slate-400 font-mono">{usersList.length} Accounts Enrolled</span>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900/70 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-700">
                     <tr>
                       <th className="px-6 py-4">User</th>
-                      <th className="px-6 py-4">Current Role</th>
+                      <th className="px-6 py-4">Role Assignment</th>
+                      <th className="px-6 py-4">Credential Status</th>
                       <th className="px-6 py-4">Account Status</th>
                       <th className="px-6 py-4 text-right">Actions</th>
                     </tr>
@@ -429,6 +724,11 @@ export default function AdminDashboard() {
                         <td className="px-6 py-4">
                           <div className="font-bold text-white text-sm">{u.firstName} {u.lastName}</div>
                           <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
+                          {u.medicalLicenseNo && (
+                            <div className="text-[10px] text-cyan-400 font-mono mt-0.5">
+                              License: {u.medicalLicenseNo} ({u.specialty || 'General'})
+                            </div>
+                          )}
                         </td>
 
                         <td className="px-6 py-4">
@@ -442,6 +742,18 @@ export default function AdminDashboard() {
                             <option value="NURSE">NURSE</option>
                             <option value="ADMIN">ADMIN</option>
                           </select>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold ${
+                            u.verificationStatus === 'VERIFIED'
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : u.verificationStatus === 'PENDING_REVIEW'
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                          }`}>
+                            {u.verificationStatus || 'VERIFIED'}
+                          </span>
                         </td>
 
                         <td className="px-6 py-4">

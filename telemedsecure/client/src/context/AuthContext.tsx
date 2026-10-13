@@ -9,13 +9,16 @@ export interface AuthUser {
   firstName: string;
   lastName: string;
   role: UserRole;
+  verificationStatus?: 'UNVERIFIED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
+  medicalLicenseNo?: string | null;
+  specialty?: string | null;
 }
 
 interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   getAuthHeaders: () => Record<string, string>;
 }
@@ -75,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     try {
       console.log('Attempting login to:', `${API_BASE}/auth/login`);
       const res = await fetch(`${API_BASE}/auth/login`, {
@@ -87,7 +90,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         console.error('Login failed:', errorData);
-        return false;
+        return { success: false, error: errorData.error || 'Authentication failed' };
       }
       const data = await res.json();
       console.log('Login successful:', data);
@@ -95,10 +98,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(data.accessToken);
       localStorage.setItem('telemed_token', data.accessToken);
       localStorage.setItem('telemed_user', JSON.stringify(data.user));
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.error('Login error:', e);
-      return false;
+      return { success: false, error: e?.message || 'Network error during login' };
     }
   };
 
