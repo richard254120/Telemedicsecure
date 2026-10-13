@@ -86,19 +86,19 @@ export default function Login() {
     if (role === 'ADMIN') {
       setActivePortal('STAFF');
       setEmail('admin@telemed.com');
-      setPassword('admin123');
+      setPassword('Password123!');
     } else if (role === 'DOCTOR') {
       setActivePortal('STAFF');
       setEmail('doctor@telemed.com');
-      setPassword('doctor123');
+      setPassword('Password123!');
     } else if (role === 'NURSE') {
       setActivePortal('STAFF');
       setEmail('nurse@telemed.com');
-      setPassword('nurse123');
+      setPassword('Password123!');
     } else if (role === 'PATIENT') {
       setActivePortal('PATIENT');
       setEmail('patient@telemed.com');
-      setPassword('patient123');
+      setPassword('Password123!');
     }
   };
 
