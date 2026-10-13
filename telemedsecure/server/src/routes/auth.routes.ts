@@ -10,9 +10,9 @@ import { requireAuth } from '../middlewares/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
-const generateTokens = (userId: string) => {
-  const accessToken = jwt.sign({ id: userId }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
-  const refreshToken = jwt.sign({ id: userId }, process.env.JWT_REFRESH_SECRET || 'rsecret', { expiresIn: '7d' });
+const generateTokens = (user) => {
+  const accessToken = jwt.sign({ id: user.id, role: user.role, mustChangePassword: user.mustChangePassword }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
+  const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET || 'rsecret', { expiresIn: '7d' });
   return { accessToken, refreshToken };
 };
 
@@ -176,7 +176,112 @@ router.post('/apply-practitioner', async (req, res) => {
   });
 });
 
-router.post('/login', async (req, res) => {
+  // 2. LOGIN FOR ALL ROLES
+  router.post('/change-password', requireAuth, async (req, res) => {
+  const userId = (req as any).user.id;
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res.status(400).json({ error: 'Old and new passwords are required' });
+  }
+
+  const pwdErr = validatePassword(newPassword);
+  if (pwdErr) return res.status(400).json({ error: pwdErr });
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: 'User not found' });
+
+  let valid = false;
+  try {
+    if (user.passwordHash.startsWith('$argon2')) {
+      valid = await argon2.verify(user.passwordHash, oldPassword);
+    }
+  } catch {}
+  if (!valid) {
+    try {
+      valid = await bcrypt.compare(oldPassword, user.passwordHash);
+    } catch {}
+  }
+  if (!valid) {
+    await logAudit('PASSWORD_CHANGE_FAILURE', 'AUTH', user.id, req.ip);
+    return res.status(401).json({ error: 'Invalid credentials' });
+  }
+
+  const newHash = await argon2.hash(newPassword);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { passwordHash: newHash, mustChangePassword: false }
+  });
+  await logAudit('PASSWORD_CHANGE_SUCCESS', 'AUTH', user.id, req.ip);
+  res.json({ message: 'Password changed successfully' });
+});
+    const { email, password, totp } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    // Generic error response for any failure
+    const invalidResponse = () => res.status(401).json({ error: 'Invalid credentials' });
+
+    if (!user) {
+      await logAudit('LOGIN_FAILURE', 'AUTH', null, req.ip);
+      await rulesEngine.recordFailedLogin(email, req.ip || 'unknown', null);
+      return invalidResponse();
+    }
+
+    // Reject deactivated or locked accounts
+    if (!user.isActive || (user.lockedUntil && user.lockedUntil > new Date())) {
+      await logAudit('LOGIN_LOCKED', 'AUTH', user.id, req.ip);
+      return res.status(403).json({ error: 'Invalid credentials' });
+    }
+
+    // Verify password (argon2 or bcrypt fallback)
+    let validPassword = false;
+    try {
+      if (user.passwordHash.startsWith('$argon2')) {
+        validPassword = await argon2.verify(user.passwordHash, password);
+      }
+    } catch {}
+    if (!validPassword) {
+      try {
+        validPassword = await bcrypt.compare(password, user.passwordHash);
+      } catch {}
+    }
+    if (!validPassword) {
+      const failedAttempts = user.failedAttempts + 1;
+      const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
+      await logAudit('LOGIN_FAILURE', 'AUTH', user.id, req.ip);
+      await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
+      return invalidResponse();
+    }
+
+    // TOTP check if enabled
+    if (user.totpSecret && !totp) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    if (user.totpSecret && totp) {
+      const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: totp });
+      if (!isValid) {
+        await logAudit('LOGIN_FAILURE_TOTP', 'AUTH', user.id, req.ip);
+        return invalidResponse();
+      }
+    }
+
+    // Reset failed attempts on success
+    await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
+    rulesEngine.resetFailedLogins(user.email);
+    await logAudit('LOGIN_SUCCESS', 'AUTH', user.id, req.ip);
+
+    // Include mustChangePassword in token payload and response
+    // Reset failed attempts on success
+    await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
+    rulesEngine.resetFailedLogins(user.email);
+    await logAudit('LOGIN_SUCCESS', 'AUTH', user.id, req.ip);
+
+    // Include mustChangePassword in token payload and response
+    const tokens = generateTokens(user);
+    const payload = { ...tokens, user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } };
+    res.json(payload);
+  });
   const { email, password, totp } = req.body;
   const user = await prisma.user.findUnique({ where: { email } });
 

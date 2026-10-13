@@ -11,6 +11,8 @@ enum Role {
   PATIENT
   DOCTOR
   NURSE
+  PHARMACIST
+  RECEPTIONIST
   ADMIN
 }
 
@@ -52,8 +54,12 @@ model User {
   firstName      String
   lastName       String
   isActive       Boolean   @default(true)
+  mustChangePassword Boolean @default(false)
   failedAttempts Int       @default(0)
   lockedUntil    DateTime?
+  createdById    String?
+  createdBy      User? @relation("AdminCreatedUsers", fields: [createdById], references: [id])
+  createdUsers   User[] @relation("AdminCreatedUsers")
   totpSecret     String?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt

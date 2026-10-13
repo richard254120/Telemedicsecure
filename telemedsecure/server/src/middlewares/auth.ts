@@ -1,4 +1,14 @@
-import { Request, Response, NextFunction } from 'express';
+import { createChainedAuditEvent } from '../services/audit.service';
+
+const logAccessDenied = async (userId: string | null, path: string, ip?: string) => {
+  await createChainedAuditEvent({
+    action: 'ACCESS_DENIED',
+    resource: path,
+    userId,
+    ipAddress: ip || 'unknown',
+    userAgent: 'unknown',
+  });
+};
 import jwt from 'jsonwebtoken';
 import { PrismaClient, Role } from '@prisma/client';
 
@@ -16,6 +26,11 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
 
     if (!user || !user.isActive) {
       return res.status(401).json({ error: 'User not found or inactive' });
+    }
+
+    // Enforce password change if flag is set, except for change-password endpoint
+    if (user.mustChangePassword && req.path !== '/api/auth/change-password') {
+      return res.status(403).json({ error: 'Password change required' });
     }
 
     (req as any).user = user;

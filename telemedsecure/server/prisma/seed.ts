@@ -7,27 +7,32 @@ const prisma = new PrismaClient();
 async function main() {
   const passwordHash = await argon2.hash('Password123!');
 
-  // Seed Admin
-  await prisma.user.upsert({
-    where: { email: 'admin@telemed.com' },
-    update: {
-      passwordHash,
-      isActive: true,
-      failedAttempts: 0,
-      lockedUntil: null,
-      verificationStatus: VerificationStatus.VERIFIED
-    },
-    create: {
-      email: 'admin@telemed.com',
-      passwordHash,
-      role: Role.ADMIN,
-      firstName: 'Chief',
-      lastName: 'Administrator',
-      isActive: true,
-      verificationStatus: VerificationStatus.VERIFIED,
-      verifiedAt: new Date()
-    },
-  });
+    // Seed Admin from env variables
+    const adminEmail = process.env.ADMIN_EMAIL || 'admin@telemed.com';
+    const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+    const adminPasswordHash = await argon2.hash(adminPassword);
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: {
+        passwordHash: adminPasswordHash,
+        isActive: true,
+        failedAttempts: 0,
+        lockedUntil: null,
+        verificationStatus: VerificationStatus.VERIFIED,
+        mustChangePassword: true
+      },
+      create: {
+        email: adminEmail,
+        passwordHash: adminPasswordHash,
+        role: Role.ADMIN,
+        firstName: 'Chief',
+        lastName: 'Administrator',
+        isActive: true,
+        verificationStatus: VerificationStatus.VERIFIED,
+        mustChangePassword: true,
+        verifiedAt: new Date()
+      }
+    });
 
   // Seed Doctors
   const doctors = [
