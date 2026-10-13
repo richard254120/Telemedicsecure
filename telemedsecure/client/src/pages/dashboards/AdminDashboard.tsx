@@ -30,7 +30,9 @@ import {
   Check,
   Award,
   Stethoscope,
-  HeartPulse
+  HeartPulse,
+  UserPlus,
+  KeyRound
 } from 'lucide-react';
 import {
   ResponsiveContainer,
@@ -69,6 +71,19 @@ export default function AdminDashboard() {
   const [inviteHours, setInviteHours] = useState(48);
   const [generatedInvite, setGeneratedInvite] = useState<{ token: string; link: string; email: string } | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Direct Staff Provisioning State
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffFirstName, setNewStaffFirstName] = useState('');
+  const [newStaffLastName, setNewStaffLastName] = useState('');
+  const [newStaffRole, setNewStaffRole] = useState<UserRole>('DOCTOR');
+  const [newStaffLicense, setNewStaffLicense] = useState('');
+  const [newStaffSpecialty, setNewStaffSpecialty] = useState('General Practice');
+  const [newStaffJurisdiction, setNewStaffJurisdiction] = useState('US-NPI');
+  const [provisionedStaff, setProvisionedStaff] = useState<{ email: string; role: string; tempPass: string; name: string } | null>(null);
+  const [copiedStaffCreds, setCopiedStaffCreds] = useState(false);
+  const [isProvisioning, setIsProvisioning] = useState(false);
 
   // Modal / drawer state for prescription audit inspection
   const [inspectedRx, setInspectedRx] = useState<any | null>(null);
@@ -167,6 +182,54 @@ export default function AdminDashboard() {
       }
     } catch (err: any) {
       console.error('Revoke invitation error:', err);
+    }
+  };
+
+  // Direct Staff Account Provisioning Action
+  const handleProvisionStaff = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStaffEmail || !newStaffPassword || !newStaffFirstName || !newStaffLastName) return;
+    setIsProvisioning(true);
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/users`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          email: newStaffEmail,
+          password: newStaffPassword,
+          firstName: newStaffFirstName,
+          lastName: newStaffLastName,
+          role: newStaffRole,
+          medicalLicenseNo: newStaffLicense,
+          licenseJurisdiction: newStaffJurisdiction,
+          specialty: newStaffSpecialty
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setProvisionedStaff({
+          name: `${newStaffFirstName} ${newStaffLastName}`,
+          email: newStaffEmail,
+          role: newStaffRole,
+          tempPass: newStaffPassword
+        });
+        setNewStaffEmail('');
+        setNewStaffPassword('');
+        setNewStaffFirstName('');
+        setNewStaffLastName('');
+        setNewStaffLicense('');
+        setActionMessage(`Successfully provisioned ${newStaffRole} account for ${data.user?.email}`);
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 5000);
+      } else {
+        setActionMessage(data.error || 'Failed to provision staff account');
+        setTimeout(() => setActionMessage(null), 5000);
+      }
+    } catch (err: any) {
+      console.error('Provision staff error:', err);
+    } finally {
+      setIsProvisioning(false);
     }
   };
 
@@ -571,7 +634,176 @@ export default function AdminDashboard() {
               )}
             </div>
 
-            {/* 2. Issue Single-Use Staff Invitation */}
+            {/* 2. Direct Staff Provisioning Form */}
+            <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 p-6 shadow-lg space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-700/70 pb-3">
+                <div className="flex items-center space-x-2">
+                  <UserPlus className="w-5 h-5 text-blue-400" />
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Provision Clinical Staff Account
+                  </h3>
+                </div>
+                <span className="text-[11px] text-slate-400">Direct Admin Account Creation (Doctor / Nurse / Admin)</span>
+              </div>
+
+              <p className="text-xs text-slate-300">
+                Staff members do not self-register publicly. Create their account directly and supply them with their login credentials.
+              </p>
+
+              <form onSubmit={handleProvisionStaff} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      First Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newStaffFirstName}
+                      onChange={e => setNewStaffFirstName(e.target.value)}
+                      placeholder="Sarah"
+                      required
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Last Name *
+                    </label>
+                    <input
+                      type="text"
+                      value={newStaffLastName}
+                      onChange={e => setNewStaffLastName(e.target.value)}
+                      placeholder="Jenkins"
+                      required
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Email Address *
+                    </label>
+                    <input
+                      type="email"
+                      value={newStaffEmail}
+                      onChange={e => setNewStaffEmail(e.target.value)}
+                      placeholder="s.jenkins@telemed.com"
+                      required
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Role Assignment *
+                    </label>
+                    <select
+                      value={newStaffRole}
+                      onChange={e => setNewStaffRole(e.target.value as UserRole)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="DOCTOR">DOCTOR (Physician)</option>
+                      <option value="NURSE">NURSE (Clinical Practitioner)</option>
+                      <option value="ADMIN">ADMIN (System Administrator)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Medical License / NPI #
+                    </label>
+                    <input
+                      type="text"
+                      value={newStaffLicense}
+                      onChange={e => setNewStaffLicense(e.target.value)}
+                      placeholder="NPI-1049281729"
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Clinical Specialty
+                    </label>
+                    <input
+                      type="text"
+                      value={newStaffSpecialty}
+                      onChange={e => setNewStaffSpecialty(e.target.value)}
+                      placeholder="Internal Medicine / Cardiology"
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        Initial Password *
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const randomPass = 'Telemed!' + Math.random().toString(36).slice(-6) + '9';
+                          setNewStaffPassword(randomPass);
+                        }}
+                        className="text-[9px] text-blue-400 hover:text-blue-300 font-semibold underline"
+                      >
+                        Generate Secure
+                      </button>
+                    </div>
+                    <input
+                      type="text"
+                      value={newStaffPassword}
+                      onChange={e => setNewStaffPassword(e.target.value)}
+                      placeholder="Min 8 chars (e.g. Telemed#2026)"
+                      required
+                      className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white font-mono text-xs placeholder-slate-500 focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="submit"
+                    disabled={isProvisioning}
+                    className="py-2.5 px-6 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow-lg shadow-blue-600/25 flex items-center space-x-2 disabled:opacity-50"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>{isProvisioning ? 'Creating Account...' : 'Create & Provision Staff Account'}</span>
+                  </button>
+                </div>
+              </form>
+
+              {provisionedStaff && (
+                <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-2 mt-4 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-emerald-300 flex items-center space-x-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                      <span>{provisionedStaff.role} Account Created for {provisionedStaff.name}</span>
+                    </span>
+                    <button
+                      onClick={() => {
+                        const credsText = `TeleMedSecure Credentials:\nPortal: ${window.location.origin}/login\nEmail: ${provisionedStaff.email}\nTemporary Password: ${provisionedStaff.tempPass}\nRole: ${provisionedStaff.role}`;
+                        navigator.clipboard.writeText(credsText);
+                        setCopiedStaffCreds(true);
+                        setTimeout(() => setCopiedStaffCreds(false), 2500);
+                      }}
+                      className="px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30 text-xs font-semibold transition flex items-center space-x-1"
+                    >
+                      {copiedStaffCreds ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedStaffCreds ? 'Copied Details!' : 'Copy Login Details'}</span>
+                    </button>
+                  </div>
+                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 font-mono text-xs text-slate-300 space-y-1">
+                    <div><span className="text-slate-500">Email:</span> <strong className="text-white">{provisionedStaff.email}</strong></div>
+                    <div><span className="text-slate-500">Password:</span> <strong className="text-emerald-400">{provisionedStaff.tempPass}</strong></div>
+                    <div><span className="text-slate-500">Role:</span> <strong className="text-cyan-400">{provisionedStaff.role}</strong></div>
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    The staff member can now sign in immediately at the main login portal using these credentials.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* 3. Issue Single-Use Staff Invitation */}
             <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 p-6 shadow-lg space-y-4">
               <div className="flex items-center justify-between border-b border-slate-700/70 pb-3">
                 <div className="flex items-center space-x-2">

@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { Router } from 'express';
+import argon2 from 'argon2';
 import { PrismaClient, Role, VerificationStatus } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import * as speakeasy from 'speakeasy';
@@ -43,6 +44,70 @@ router.get('/users', async (req, res) => {
     orderBy: { createdAt: 'desc' }
   });
   res.json(users);
+});
+
+// Admin directly provisions clinical staff (Doctor, Nurse, Admin)
+router.post('/users', async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, role, medicalLicenseNo, licenseJurisdiction, specialty } = req.body;
+    const adminUser = (req as any).user;
+
+    if (!email || !password || !firstName || !lastName || !role) {
+      return res.status(400).json({ error: 'Email, password, first name, last name, and role are required' });
+    }
+
+    if (!Object.values(Role).includes(role)) {
+      return res.status(400).json({ error: 'Invalid role specified' });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User with this email already exists' });
+    }
+
+    const passwordHash = await argon2.hash(password);
+
+    const newUser = await prisma.user.create({
+      data: {
+        email: cleanEmail,
+        passwordHash,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        role,
+        verificationStatus: VerificationStatus.VERIFIED,
+        medicalLicenseNo: medicalLicenseNo?.trim() || null,
+        licenseJurisdiction: licenseJurisdiction?.trim() || (['DOCTOR', 'NURSE'].includes(role) ? 'US-NPI' : null),
+        specialty: specialty?.trim() || (['DOCTOR', 'NURSE'].includes(role) ? 'General Practice' : null),
+        verifiedAt: new Date(),
+        verifiedById: adminUser.id,
+        isActive: true
+      }
+    });
+
+    await logAudit('STAFF_ACCOUNT_PROVISIONED', `USER:${newUser.id}`, adminUser.id, req.ip);
+
+    res.status(201).json({
+      message: `${role} account provisioned successfully`,
+      user: {
+        id: newUser.id,
+        email: newUser.email,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
+        role: newUser.role,
+        verificationStatus: newUser.verificationStatus,
+        medicalLicenseNo: newUser.medicalLicenseNo,
+        specialty: newUser.specialty
+      }
+    });
+  } catch (err: any) {
+    console.error('Provision staff error:', err);
+    res.status(500).json({ error: 'Failed to provision staff account' });
+  }
 });
 
 // Admin reviews and verifies / rejects clinical practitioner credentials
