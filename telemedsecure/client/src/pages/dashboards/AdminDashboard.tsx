@@ -22,7 +22,8 @@ import {
   Key,
   Flame,
   Activity,
-  FileText
+  FileText,
+  Calendar
 } from 'lucide-react';
 import {
   ResponsiveContainer,
