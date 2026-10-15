@@ -11,6 +11,7 @@ export interface AuthUser {
   role: UserRole;
   verificationStatus?: 'UNVERIFIED' | 'PENDING_REVIEW' | 'VERIFIED' | 'REJECTED';
   medicalLicenseNo?: string | null;
+  licenseJurisdiction?: string | null;
   specialty?: string | null;
 }
 

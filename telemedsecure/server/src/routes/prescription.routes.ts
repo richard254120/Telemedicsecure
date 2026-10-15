@@ -462,9 +462,9 @@ router.post('/', requireRole([Role.DOCTOR]), async (req: Request, res: Response)
 });
 
 // ==========================================
-// 6. DISPENSE PRESCRIPTION (Pharmacist/Doctor/Nurse/Admin)
+// 6. DISPENSE PRESCRIPTION (Pharmacist/Doctor/Nurse)
 // ==========================================
-router.post('/:id/dispense', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN]), async (req: Request, res: Response) => {
+router.post('/:id/dispense', requireRole([Role.DOCTOR, Role.NURSE, Role.PHARMACIST]), async (req: Request, res: Response) => {
   try {
     const prescriptionId = String(req.params.id);
     const user = (req as any).user;
@@ -514,9 +514,9 @@ router.post('/:id/dispense', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN]),
 });
 
 // ==========================================
-// 7. REVOKE PRESCRIPTION (Doctor / Admin)
+// 7. REVOKE PRESCRIPTION (Doctor only)
 // ==========================================
-router.post('/:id/revoke', requireRole([Role.DOCTOR, Role.ADMIN]), async (req: Request, res: Response) => {
+router.post('/:id/revoke', requireRole([Role.DOCTOR]), async (req: Request, res: Response) => {
   try {
     const prescriptionId = String(req.params.id);
     const user = (req as any).user;

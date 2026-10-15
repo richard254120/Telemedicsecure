@@ -34,22 +34,77 @@ router.get('/', async (req, res) => {
   res.json(consultations);
 });
 
-router.post('/', requireRole([Role.DOCTOR, Role.ADMIN]), async (req, res) => {
+// Patients directory for licensed clinical staff (Doctor & Nurse)
+router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
+  try {
+    const patients = await prisma.user.findMany({
+      where: { role: Role.PATIENT },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        createdAt: true,
+        isActive: true,
+        verificationStatus: true,
+        patientConsultations: {
+          select: {
+            id: true,
+            scheduledAt: true,
+            status: true,
+            clinicalFlags: true
+          },
+          orderBy: { scheduledAt: 'desc' },
+          take: 5
+        },
+        prescriptions: {
+          select: {
+            id: true,
+            createdAt: true,
+            status: true,
+            items: true
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 5
+        }
+      },
+      orderBy: { lastName: 'asc' }
+    });
+    res.json(patients);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch patients', details: err.message });
+  }
+});
+
+// Only licensed DOCTOR can schedule clinical consultations
+router.post('/', requireRole([Role.DOCTOR]), async (req, res) => {
   const { patientId, scheduledAt } = req.body;
   const doctorId = (req as any).user.id;
 
-  // Rule Check: Consent Missing (GDPR)
-  const hasConsent = await gdprService.hasActiveConsent(patientId, 'TELEMEDICINE_TREATMENT');
-  if (!hasConsent) {
+  // Rule Check: Consent Check (GDPR)
+  const consentRecord = await prisma.consent.findFirst({
+    where: { patientId, purpose: 'TELEMEDICINE_TREATMENT' },
+    orderBy: { grantedAt: 'desc' },
+  });
+
+  if (consentRecord && !consentRecord.granted) {
     await rulesEngine.triggerViolation({
       ruleId: 'CONSENT_MISSING',
-      description: `Attempted to schedule consultation for patient ${patientId} without valid GDPR consent.`,
+      description: `Attempted to schedule consultation for patient ${patientId} whose GDPR consent was explicitly revoked.`,
       userId: doctorId,
       sourceIp: req.ip,
       resource: `Patient:${patientId}`,
     });
     return res.status(403).json({
-      error: 'GDPR Compliance Error: Patient has not granted active consent for telemedicine treatment.',
+      error: 'GDPR Compliance Error: Patient has explicitly revoked consent for telemedicine treatment.',
+    });
+  }
+
+  if (!consentRecord) {
+    await gdprService.grantConsent({
+      patientId,
+      purpose: 'TELEMEDICINE_TREATMENT',
+      ipAddress: req.ip
     });
   }
 

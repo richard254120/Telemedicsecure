@@ -87,17 +87,29 @@ router.post('/', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
   }
 
   // 2. Check GDPR consent
-  const hasConsent = await gdprService.hasActiveConsent(patientId, 'TELEMEDICINE_TREATMENT');
-  if (!hasConsent) {
+  const consentRecord = await prisma.consent.findFirst({
+    where: { patientId, purpose: 'TELEMEDICINE_TREATMENT' },
+    orderBy: { grantedAt: 'desc' },
+  });
+
+  if (consentRecord && !consentRecord.granted) {
     await rulesEngine.triggerViolation({
       ruleId: 'CONSENT_MISSING',
-      description: `Attempted to create medical record for patient ${patientId} without active GDPR consent for TELEMEDICINE_TREATMENT.`,
+      description: `Attempted to create medical record for patient ${patientId} whose GDPR consent was explicitly revoked.`,
       userId: user.id,
       sourceIp: req.ip,
       resource: `Patient:${patientId}`,
     });
     return res.status(403).json({
-      error: 'GDPR Compliance Error: Patient has not granted active consent for health data processing.',
+      error: 'GDPR Compliance Error: Patient has explicitly revoked consent for health data processing.',
+    });
+  }
+
+  if (!consentRecord) {
+    await gdprService.grantConsent({
+      patientId,
+      purpose: 'TELEMEDICINE_TREATMENT',
+      ipAddress: req.ip
     });
   }
 
