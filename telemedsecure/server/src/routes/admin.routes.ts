@@ -47,10 +47,10 @@ router.get('/users', async (req, res) => {
   res.json(users);
 });
 
-// 2. Provision staff (admin creates account with temporary password)
+// 2. Provision staff (admin creates account with password or generated temporary credentials)
 router.post('/users', async (req, res) => {
   try {
-    const { email, firstName, lastName, role, medicalLicenseNo, licenseJurisdiction, specialty } = req.body;
+    const { email, firstName, lastName, role, medicalLicenseNo, licenseJurisdiction, specialty, password } = req.body;
     const adminUser = (req as any).user;
 
     if (!email || !firstName || !lastName || !role) {
@@ -69,9 +69,11 @@ router.post('/users', async (req, res) => {
       return res.status(400).json({ error: 'User with this email already exists' });
     }
 
-    // Generate a strong temporary password (16 chars base64 safe)
-    const tempPassword = crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'A');
-    const passwordHash = await argon2.hash(tempPassword);
+    // Use admin-supplied password if provided and valid (>= 8 chars), otherwise generate strong temporary password
+    const rawPassword = (password && typeof password === 'string' && password.trim().length >= 8)
+      ? password.trim()
+      : crypto.randomBytes(12).toString('base64').replace(/[/+=]/g, 'A');
+    const passwordHash = await argon2.hash(rawPassword);
 
     const newUser = await prisma.user.create({
       data: {
@@ -85,11 +87,11 @@ router.post('/users', async (req, res) => {
         licenseJurisdiction:
           licenseJurisdiction?.trim() ||
           (['DOCTOR', 'NURSE', 'PHARMACIST', 'RECEPTIONIST', 'ADMIN'].includes(role) ? 'US-NPI' : null),
-        specialty: specialty?.trim() || (['DOCTOR', 'NURSE'].includes(role) ? 'General Practice' : null),
+        specialty: specialty?.trim() || (['DOCTOR', 'NURSE'].includes(role) ? 'General Practice' : (role === Role.ADMIN ? 'Hospital Administration' : null)),
         verifiedAt: new Date(),
         verifiedById: adminUser.id,
         createdById: adminUser.id,
-        mustChangePassword: true,
+        mustChangePassword: false,
         isActive: true,
       },
     });
@@ -97,7 +99,7 @@ router.post('/users', async (req, res) => {
     await logAudit('STAFF_ACCOUNT_PROVISIONED', `USER:${newUser.id}`, adminUser.id, req.ip);
     res.status(201).json({
       message: `${role} account provisioned successfully`,
-      temporaryPassword: tempPassword,
+      temporaryPassword: rawPassword,
       user: {
         id: newUser.id,
         email: newUser.email,
@@ -147,9 +149,10 @@ router.put('/users/:id/verify-credentials', async (req, res) => {
 });
 
 // 4. Staff invitation endpoints (create, list, revoke)
+// Default expiration: 5 minutes (enforces tight security for single-use onboarding tokens)
 router.post('/invitations', async (req, res) => {
   try {
-    const { email, role, expiresInHours } = req.body;
+    const { email, role, expiresInMinutes, expiresInHours } = req.body;
     const adminUser = (req as any).user;
     if (!email || !role) {
       return res.status(400).json({ error: 'Email and role are required' });
@@ -159,13 +162,18 @@ router.post('/invitations', async (req, res) => {
     }
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    const hours = Number(expiresInHours) || 48;
-    const expiresAt = new Date(Date.now() + hours * 3600 * 1000);
+    
+    // Explicitly set default expiration to 5 minutes
+    const minutes = expiresInMinutes !== undefined 
+      ? Number(expiresInMinutes) 
+      : (expiresInHours !== undefined ? Number(expiresInHours) * 60 : 5);
+    const expiresAt = new Date(Date.now() + minutes * 60 * 1000);
+
     const invitation = await prisma.staffInvitation.create({
       data: { email: email.toLowerCase().trim(), role, tokenHash, invitedById: adminUser.id, expiresAt },
     });
     await logAudit('STAFF_INVITATION_CREATED', `INVITATION:${invitation.id}`, adminUser.id, req.ip);
-    res.status(201).json({ message: 'Invitation created', token: rawToken, invitation });
+    res.status(201).json({ message: 'Invitation created', token: rawToken, invitation, expiresInMinutes: minutes });
   } catch (err: any) {
     console.error(err);
     res.status(500).json({ error: 'Failed to create invitation' });

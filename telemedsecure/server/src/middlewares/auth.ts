@@ -30,7 +30,7 @@ export const requireAuth = async (req: Request, res: Response, next: NextFunctio
     }
 
     // Enforce password change if flag is set, except for change-password endpoint
-    if (user.mustChangePassword && req.path !== '/api/auth/change-password') {
+    if (user.mustChangePassword && !req.originalUrl.includes('/change-password')) {
       return res.status(403).json({ error: 'Password change required' });
     }
 

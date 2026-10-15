@@ -93,7 +93,53 @@ router.post('/register', async (req, res) => {
   }
 });
 
-// 2. STAFF REGISTRATION VIA INVITATION TOKEN
+// 2. VERIFY INVITATION TOKEN
+router.get('/invitations/:token', async (req, res) => {
+  try {
+    const rawToken = (req.params.token || '').trim();
+    if (!rawToken) {
+      return res.status(400).json({ error: 'Invitation token is required' });
+    }
+
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+    const invitation = await prisma.staffInvitation.findUnique({
+      where: { tokenHash },
+      include: {
+        invitedBy: {
+          select: { firstName: true, lastName: true, email: true }
+        }
+      }
+    });
+
+    if (!invitation) {
+      return res.status(404).json({ error: 'Invalid invitation token' });
+    }
+
+    if (invitation.isAccepted) {
+      return res.status(400).json({ error: 'This invitation token has already been accepted and used' });
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      return res.status(400).json({
+        error: 'This invitation token has expired (valid for 5 minutes). Please request a new invitation from your administrator.',
+        expired: true
+      });
+    }
+
+    res.json({
+      valid: true,
+      email: invitation.email,
+      role: invitation.role,
+      expiresAt: invitation.expiresAt,
+      invitedBy: invitation.invitedBy
+    });
+  } catch (err: any) {
+    console.error('Verify invitation error:', err);
+    res.status(500).json({ error: 'Failed to verify invitation token' });
+  }
+});
+
+// 3. STAFF REGISTRATION VIA INVITATION TOKEN
 // For Doctors, Nurses, or Administrators invited by clinic leadership
 router.post('/register-staff', async (req, res) => {
   try {
@@ -121,32 +167,46 @@ router.post('/register-staff', async (req, res) => {
       where: { tokenHash }
     });
 
-    if (!invitation || invitation.isAccepted || invitation.expiresAt < new Date()) {
-      return res.status(400).json({ error: 'Invalid, expired, or already used invitation token' });
+    if (!invitation) {
+      return res.status(400).json({ error: 'Invalid invitation token' });
     }
 
-    if (invitation.email.toLowerCase() !== email.toLowerCase()) {
+    if (invitation.isAccepted) {
+      return res.status(400).json({ error: 'This invitation token has already been accepted and used' });
+    }
+
+    if (invitation.expiresAt < new Date()) {
+      return res.status(400).json({
+        error: 'This invitation token has expired (valid for 5 minutes). Please request a new invitation from your administrator.',
+        expired: true
+      });
+    }
+
+    if (invitation.email.toLowerCase() !== email.toLowerCase().trim()) {
       return res.status(400).json({ error: `Invitation token was issued for ${invitation.email}, not ${email}` });
     }
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
+    const cleanEmail = email.toLowerCase().trim();
+    const existingUser = await prisma.user.findUnique({ where: { email: cleanEmail } });
     if (existingUser) return res.status(400).json({ error: 'User with this email already exists' });
 
     const passwordHash = await argon2.hash(password);
 
     const user = await prisma.user.create({
       data: {
-        email,
+        email: cleanEmail,
         passwordHash,
-        firstName,
-        lastName,
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
         role: invitation.role,
         verificationStatus: VerificationStatus.VERIFIED,
-        medicalLicenseNo: medicalLicenseNo || null,
-        licenseJurisdiction: licenseJurisdiction || null,
-        specialty: specialty || null,
+        medicalLicenseNo: medicalLicenseNo?.trim() || null,
+        licenseJurisdiction: licenseJurisdiction?.trim() || (['DOCTOR', 'NURSE'].includes(invitation.role) ? 'US-NPI' : null),
+        specialty: specialty?.trim() || (['DOCTOR', 'NURSE'].includes(invitation.role) ? 'General Practice' : (invitation.role === Role.ADMIN ? 'Hospital Administration' : null)),
         verifiedAt: new Date(),
         verifiedById: invitation.invitedById,
+        createdById: invitation.invitedById,
+        mustChangePassword: false,
         isActive: true
       }
     });
@@ -158,9 +218,18 @@ router.post('/register-staff', async (req, res) => {
 
     await logAudit('STAFF_REGISTER_INVITED', 'AUTH', user.id, req.ip);
 
+    const tokens = generateTokens(user);
     res.status(201).json({
       message: `Staff account (${user.role}) registered and verified successfully`,
-      user: { id: user.id, email: user.email, role: user.role }
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        verificationStatus: user.verificationStatus
+      }
     });
   } catch (error: any) {
     console.error('Staff registration error:', error);
