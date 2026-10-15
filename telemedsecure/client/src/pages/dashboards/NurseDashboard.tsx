@@ -92,9 +92,14 @@ export default function NurseDashboard() {
 
       if (res.ok) {
         const result = await res.json();
+        const selectedConsult = consultations.find(c => c.id === selectedConsultationId);
+        const resolvedName = selectedConsult?.patient
+          ? `${selectedConsult.patient.firstName} ${selectedConsult.patient.lastName}`
+          : (selectedConsultationId ? `Patient #${selectedConsultationId.substring(0, 6)}` : 'Assigned Patient');
+
         const newEntry = {
           id: result.id || `entry-${Date.now()}`,
-          patientName: consultations.find(c => c.id === selectedConsultationId)?.patient?.firstName || 'Alice Smith',
+          patientName: resolvedName,
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           bp: `${bpSystolic}/${bpDiastolic}`,
           hr: heartRate,
@@ -107,21 +112,8 @@ export default function NurseDashboard() {
         setSubmissionStatus(`Vitals stored securely. Envelope encrypted with per-record DEK.${activeFlags.length > 0 ? ' Clinical flags registered.' : ''}`);
         setTimeout(() => setSubmissionStatus(null), 4000);
       } else {
-        // Fallback for simulated room demo-123 if not in DB
-        const newEntry = {
-          id: `entry-${Date.now()}`,
-          patientName: 'Alice Smith',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          bp: `${bpSystolic}/${bpDiastolic}`,
-          hr: heartRate,
-          spo2: spO2,
-          temp: temp,
-          flagged: activeFlags.length > 0,
-          flags: activeFlags
-        };
-        setRecentEntries([newEntry, ...recentEntries]);
-        setSubmissionStatus('Vitals successfully captured and AES-256 sealed.');
-        setTimeout(() => setSubmissionStatus(null), 4000);
+        const errData = await res.json().catch(() => ({}));
+        setSubmissionStatus(`Error: ${errData.error || 'Failed to submit vitals'}`);
       }
     } catch (e: any) {
       setSubmissionStatus(`Error: ${e.message}`);

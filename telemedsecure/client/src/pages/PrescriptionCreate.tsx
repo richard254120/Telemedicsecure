@@ -237,7 +237,7 @@ export default function PrescriptionCreate() {
                       </option>
                     ))
                   ) : (
-                    <option value="">Default Patient (Alice Smith)</option>
+                    <option value="">No registered patients found</option>
                   )}
                 </select>
               </div>

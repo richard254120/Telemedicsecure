@@ -14,7 +14,6 @@ import {
   EyeOff,
   Mail,
   Lock,
-  Sparkles,
   LockKeyhole,
   Clock,
   AlertTriangle,
@@ -120,28 +119,6 @@ export default function Login() {
     setSuccessMessage(null);
     setValidationErrors({});
     setIsPatientRegister(false);
-  };
-
-  // Demo fast-fill helper for evaluation
-  const handleFillDemo = (role: 'ADMIN' | 'DOCTOR' | 'NURSE' | 'PATIENT') => {
-    setError(null);
-    setSuccessMessage(null);
-    setIsPatientRegister(false);
-    setActiveSection(role);
-
-    if (role === 'ADMIN') {
-      setEmail('admin@telemed.com');
-      setPassword('Password123!');
-    } else if (role === 'DOCTOR') {
-      setEmail('doctor@telemed.com');
-      setPassword('Password123!');
-    } else if (role === 'NURSE') {
-      setEmail('nurse@telemed.com');
-      setPassword('Password123!');
-    } else if (role === 'PATIENT') {
-      setEmail('patient@telemed.com');
-      setPassword('Password123!');
-    }
   };
 
   const validateForm = () => {
@@ -845,82 +822,6 @@ export default function Login() {
               </button>
             </div>
           )}
-        </div>
-
-        {/* 1-Click Fast Evaluation Demo Fill */}
-        <div className="bg-slate-900/60 rounded-2xl border border-slate-800/80 p-4 space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center space-x-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>Direct Fast-Fill Credentials (Testing & Evaluation)</span>
-            </span>
-            <span className="text-[10px] text-slate-500">1-click switch</span>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <button
-              type="button"
-              onClick={() => handleFillDemo('DOCTOR')}
-              className={`p-2 rounded-xl border text-[11px] font-semibold transition text-left ${
-                activeSection === 'DOCTOR'
-                  ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
-                  : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <div className="font-bold flex items-center space-x-1">
-                <Stethoscope className="w-3 h-3 text-blue-400" />
-                <span>Doctor</span>
-              </div>
-              <div className="text-[9px] text-slate-400 truncate">doctor@telemed.com</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleFillDemo('NURSE')}
-              className={`p-2 rounded-xl border text-[11px] font-semibold transition text-left ${
-                activeSection === 'NURSE'
-                  ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
-                  : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <div className="font-bold flex items-center space-x-1">
-                <HeartPulse className="w-3 h-3 text-emerald-400" />
-                <span>Nurse</span>
-              </div>
-              <div className="text-[9px] text-slate-400 truncate">nurse@telemed.com</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleFillDemo('ADMIN')}
-              className={`p-2 rounded-xl border text-[11px] font-semibold transition text-left ${
-                activeSection === 'ADMIN'
-                  ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
-                  : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <div className="font-bold flex items-center space-x-1">
-                <ShieldAlert className="w-3 h-3 text-purple-400" />
-                <span>Admin</span>
-              </div>
-              <div className="text-[9px] text-slate-400 truncate">admin@telemed.com</div>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleFillDemo('PATIENT')}
-              className={`p-2 rounded-xl border text-[11px] font-semibold transition text-left ${
-                activeSection === 'PATIENT'
-                  ? 'bg-cyan-500/20 border-cyan-500/40 text-cyan-300'
-                  : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800 text-slate-400 hover:text-white'
-              }`}
-            >
-              <div className="font-bold flex items-center space-x-1">
-                <User className="w-3 h-3 text-cyan-400" />
-                <span>Patient</span>
-              </div>
-              <div className="text-[9px] text-slate-400 truncate">patient@telemed.com</div>
-            </button>
-          </div>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link, useNavigate, Navigate, useParams } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -59,19 +59,22 @@ function DashboardRedirect() {
 
 function WaitingRoom() {
   const navigate = useNavigate();
+  const { id } = useParams<{ id: string }>();
   return (
     <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-8 text-center">
       <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-8" />
       <h2 className="text-2xl font-bold text-white mb-2">Secure Waiting Room</h2>
       <p className="text-slate-400 mb-8 max-w-sm">
-        Deriving ECDH P-256 session parameters. Waiting for doctor to establish peer connection...
+        Deriving ECDH P-256 session parameters. Waiting for clinical session to connect...
       </p>
-      <button
-        onClick={() => navigate('/call/demo-123')}
-        className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 px-8 rounded-2xl transition shadow-xl shadow-emerald-600/20"
-      >
-        Doctor Connected (Enter E2EE Call)
-      </button>
+      {id && (
+        <button
+          onClick={() => navigate(`/call/${id}`)}
+          className="bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-3 px-8 rounded-2xl transition shadow-xl shadow-emerald-600/20"
+        >
+          Clinician Ready (Enter E2EE Call)
+        </button>
+      )}
     </div>
   );
 }

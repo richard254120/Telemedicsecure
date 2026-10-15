@@ -252,7 +252,7 @@ export default function DoctorDashboard() {
                       Editing Clinical Notes for Consultation #{selectedConsultation.id?.substring(0, 8)}
                     </h3>
                     <p className="text-xs text-slate-400">
-                      Patient: {selectedConsultation.patient ? `${selectedConsultation.patient.firstName} ${selectedConsultation.patient.lastName}` : 'Alice Smith'}
+                      Patient: {selectedConsultation.patient ? `${selectedConsultation.patient.firstName} ${selectedConsultation.patient.lastName}` : (selectedConsultation.patientId || 'Unassigned Patient')}
                     </p>
                   </div>
                   <button
@@ -396,7 +396,7 @@ export default function DoctorDashboard() {
                       </div>
 
                       <p className="text-[11px] text-slate-400">
-                        Patient: {rx.consultation?.patient ? `${rx.consultation.patient.firstName} ${rx.consultation.patient.lastName}` : 'Alice Smith'} • {new Date(rx.createdAt).toLocaleDateString()}
+                        Patient: {rx.consultation?.patient ? `${rx.consultation.patient.firstName} ${rx.consultation.patient.lastName}` : (rx.patient ? `${rx.patient.firstName} ${rx.patient.lastName}` : 'Direct Patient')} • {new Date(rx.createdAt).toLocaleDateString()}
                       </p>
                     </div>
 
