@@ -153,14 +153,14 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE}/admin/invitations`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresInHours: inviteHours })
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresInMinutes: 5 })
       });
       const data = await res.json();
       if (res.ok) {
         const inviteLink = `${window.location.origin}/login?invite=${data.token}&email=${encodeURIComponent(inviteEmail)}`;
         setGeneratedInvite({ token: data.token, link: inviteLink, email: inviteEmail });
         setInviteEmail('');
-        setActionMessage(`Issued single-use ${inviteRole} onboarding invitation`);
+        setActionMessage(`Issued single-use ${inviteRole} onboarding invitation (valid for 5 minutes)`);
         fetchAllAdminData();
         setTimeout(() => setActionMessage(null), 5000);
       } else {
@@ -217,7 +217,7 @@ export default function AdminDashboard() {
           name: `${newStaffFirstName} ${newStaffLastName}`,
           email: newStaffEmail,
           role: newStaffRole,
-          tempPass: newStaffPassword
+          tempPass: data.temporaryPassword || newStaffPassword
         });
         setNewStaffEmail('');
         setNewStaffPassword('');
@@ -1175,7 +1175,7 @@ export default function AdminDashboard() {
                     {generatedInvite.link}
                   </div>
                   <p className="text-[10px] text-slate-400">
-                    Token: <span className="font-mono text-cyan-400">{generatedInvite.token.substring(0, 16)}...</span> (Expires in 48 hours. Can be used exactly once.)
+                    Token: <span className="font-mono text-cyan-400">{generatedInvite.token.substring(0, 16)}...</span> (Expires in 5 minutes. Single-use onboarding token.)
                   </p>
                 </div>
               )}
@@ -1187,41 +1187,55 @@ export default function AdminDashboard() {
                     Recent Staff Invitations ({invitations.length})
                   </div>
                   <div className="grid gap-2 max-h-48 overflow-y-auto pr-1">
-                    {invitations.slice(0, 5).map(inv => (
-                      <div
-                        key={inv.id}
-                        className="px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs"
-                      >
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
-                            inv.isAccepted
-                              ? 'bg-slate-700 text-slate-400'
-                              : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
-                          }`}>
-                            {inv.role}
-                          </span>
-                          <span className="font-semibold text-white">{inv.email}</span>
-                          <span className="text-[10px] text-slate-500 font-mono">
-                            Expires: {new Date(inv.expiresAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <div className="flex items-center space-x-2">
-                          {inv.isAccepted ? (
-                            <span className="text-[10px] text-emerald-400 font-semibold flex items-center space-x-1">
-                              <Check className="w-3 h-3" />
-                              <span>Accepted</span>
+                    {invitations.slice(0, 5).map(inv => {
+                      const isExpired = new Date(inv.expiresAt) < new Date();
+                      const minutesLeft = Math.max(0, Math.ceil((new Date(inv.expiresAt).getTime() - Date.now()) / 60000));
+                      return (
+                        <div
+                          key={inv.id}
+                          className="px-3.5 py-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between text-xs"
+                        >
+                          <div className="flex items-center space-x-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                              inv.isAccepted
+                                ? 'bg-slate-700 text-slate-400'
+                                : 'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            }`}>
+                              {inv.role}
                             </span>
-                          ) : (
-                            <button
-                              onClick={() => handleRevokeInvitation(inv.id)}
-                              className="text-[10px] text-red-400 hover:text-red-300 font-semibold"
-                            >
-                              Revoke
-                            </button>
-                          )}
+                            <span className="font-semibold text-white">{inv.email}</span>
+                            <span className={`text-[10px] font-mono ${
+                              inv.isAccepted
+                                ? 'text-slate-500'
+                                : isExpired
+                                  ? 'text-amber-400'
+                                  : 'text-cyan-400'
+                            }`}>
+                              {inv.isAccepted
+                                ? 'Used'
+                                : isExpired
+                                  ? 'Expired (5m window)'
+                                  : `Valid (${minutesLeft}m left)`}
+                            </span>
+                          </div>
+                          <div className="flex items-center space-x-2">
+                            {inv.isAccepted ? (
+                              <span className="text-[10px] text-emerald-400 font-semibold flex items-center space-x-1">
+                                <Check className="w-3 h-3" />
+                                <span>Accepted</span>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleRevokeInvitation(inv.id)}
+                                className="text-[10px] text-red-400 hover:text-red-300 font-semibold"
+                              >
+                                Revoke
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
