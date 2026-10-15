@@ -333,10 +333,10 @@ router.post('/login', async (req, res) => {
 
   // TOTP check if enabled
   if (user.totpSecret && !totp) {
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({ error: 'Two-factor authenticator code required', requires2FA: true });
   }
   if (user.totpSecret && totp) {
-    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: totp });
+    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: String(totp).trim(), window: 1 });
     if (!isValid) {
       await logAudit('LOGIN_FAILURE_TOTP', 'AUTH', user.id, req.ip);
       return invalidResponse();
@@ -351,6 +351,105 @@ router.post('/login', async (req, res) => {
   const tokens = generateTokens(user);
   const payload = { ...tokens, user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } };
   res.json(payload);
+});
+
+// 2FA TOTP Enrollment & Management
+router.get('/2fa/status', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { id: true, totpSecret: true, email: true }
+    });
+    res.json({ isEnabled: !!dbUser?.totpSecret, email: dbUser?.email });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to retrieve 2FA status' });
+  }
+});
+
+router.post('/2fa/generate', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const secret = speakeasy.generateSecret({
+      name: `TeleMedSecure (${user.email})`,
+      issuer: 'TeleMedSecure EPCS',
+      length: 20
+    });
+
+    res.json({
+      secret: secret.base32,
+      otpauthUrl: secret.otpauth_url
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to generate 2FA secret' });
+  }
+});
+
+router.post('/2fa/enable', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { secret, token } = req.body;
+
+    if (!secret || !token) {
+      return res.status(400).json({ error: 'Secret and 6-digit TOTP token are required' });
+    }
+
+    const isValid = speakeasy.totp.verify({
+      secret,
+      encoding: 'base32',
+      token: String(token).trim(),
+      window: 1
+    });
+
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid authenticator code. Verification failed.' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { totpSecret: secret }
+    });
+
+    await logAudit('2FA_ENABLED', 'AUTH', user.id, req.ip);
+
+    res.json({ success: true, message: 'Two-Factor Authentication successfully enrolled and active.' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to enable 2FA', details: err.message });
+  }
+});
+
+router.post('/2fa/disable', requireAuth, async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { token } = req.body;
+
+    const dbUser = await prisma.user.findUnique({ where: { id: user.id } });
+    if (!dbUser?.totpSecret) {
+      return res.status(400).json({ error: '2FA is not currently enabled' });
+    }
+
+    const isValid = speakeasy.totp.verify({
+      secret: dbUser.totpSecret,
+      encoding: 'base32',
+      token: String(token).trim(),
+      window: 1
+    });
+
+    if (!isValid) {
+      return res.status(400).json({ error: 'Invalid authenticator verification code' });
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { totpSecret: null }
+    });
+
+    await logAudit('2FA_DISABLED', 'AUTH', user.id, req.ip);
+
+    res.json({ success: true, message: 'Two-Factor Authentication disabled.' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to disable 2FA' });
+  }
 });
 
 router.get('/me', requireAuth, async (req, res) => {

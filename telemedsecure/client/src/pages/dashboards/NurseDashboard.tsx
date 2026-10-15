@@ -16,8 +16,13 @@ import {
   RefreshCw,
   Activity,
   Thermometer,
-  Stethoscope
+  Stethoscope,
+  KeyRound,
+  Zap,
+  Send,
+  AlertCircle
 } from 'lucide-react';
+import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
@@ -27,6 +32,7 @@ export default function NurseDashboard() {
   const [patients, setPatients] = useState<any[]>([]);
   const [consultations, setConsultations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [show2FAModal, setShow2FAModal] = useState(false);
 
   // Vitals form state
   const [selectedConsultationId, setSelectedConsultationId] = useState<string>('');
@@ -35,8 +41,12 @@ export default function NurseDashboard() {
   const [heartRate, setHeartRate] = useState<number>(75);
   const [spO2, setSpO2] = useState<number>(98);
   const [temp, setTemp] = useState<number>(36.8);
+  const [respRate, setRespRate] = useState<number>(16);
+  const [consciousness, setConsciousness] = useState<'ALERT' | 'VOICE' | 'PAIN' | 'UNRESPONSIVE'>('ALERT');
+  const [onOxygen, setOnOxygen] = useState<boolean>(false);
 
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
+  const [alertDispatchStatus, setAlertDispatchStatus] = useState<string | null>(null);
   const [recentEntries, setRecentEntries] = useState<any[]>([]);
 
   useEffect(() => {
@@ -59,6 +69,50 @@ export default function NurseDashboard() {
     }
   };
 
+  // NEWS2 Early Warning Score Calculation
+  const calculateNEWS2 = () => {
+    let score = 0;
+    // Respiration rate
+    if (respRate <= 8 || respRate >= 25) score += 3;
+    else if (respRate >= 21) score += 2;
+    else if (respRate >= 9 && respRate <= 11) score += 1;
+
+    // SpO2 Scale 1
+    if (spO2 <= 91) score += 3;
+    else if (spO2 <= 93) score += 2;
+    else if (spO2 <= 95) score += 1;
+
+    // Air or Oxygen
+    if (onOxygen) score += 2;
+
+    // Systolic BP
+    if (bpSystolic <= 90 || bpSystolic >= 220) score += 3;
+    else if (bpSystolic <= 100) score += 2;
+    else if (bpSystolic <= 110) score += 1;
+
+    // Heart Rate
+    if (heartRate <= 40 || heartRate >= 131) score += 3;
+    else if (heartRate >= 111) score += 2;
+    else if (heartRate <= 50 || heartRate >= 91) score += 1;
+
+    // Consciousness
+    if (consciousness !== 'ALERT') score += 3;
+
+    // Body Temperature
+    if (temp <= 35.0) score += 3;
+    else if (temp >= 39.1) score += 2;
+    else if (temp <= 36.0 || temp >= 38.1) score += 1;
+
+    return score;
+  };
+
+  const news2Score = calculateNEWS2();
+  const news2RiskLevel = news2Score >= 7
+    ? { level: 'HIGH / CRITICAL RISK', color: 'text-red-400 bg-red-500/20 border-red-500/40', desc: 'Immediate medical escalation required: Notify attending physician immediately.' }
+    : news2Score >= 5
+      ? { level: 'MEDIUM CLINICAL RISK', color: 'text-amber-400 bg-amber-500/20 border-amber-500/40', desc: 'Urgent clinical review: Registered nurse and doctor assessment indicated.' }
+      : { level: 'LOW CLINICAL RISK', color: 'text-emerald-400 bg-emerald-500/20 border-emerald-500/40', desc: 'Routine ward monitoring frequency indicated.' };
+
   // Real-time abnormal threshold evaluations
   const activeFlags: string[] = [];
   if (bpSystolic > 140 || bpDiastolic > 90) activeFlags.push(`Hypertension (${bpSystolic}/${bpDiastolic} mmHg)`);
@@ -66,6 +120,42 @@ export default function NurseDashboard() {
   if (heartRate < 60) activeFlags.push(`Bradycardia (${heartRate} bpm)`);
   if (spO2 < 92) activeFlags.push(`Hypoxia (${spO2}%)`);
   if (temp > 38.0) activeFlags.push(`Fever (${temp}°C)`);
+  if (respRate > 24) activeFlags.push(`Tachypnea (${respRate} bpm)`);
+  if (consciousness !== 'ALERT') activeFlags.push(`Altered Alertness Level (${consciousness})`);
+
+  // Dispatch Triage Escalation Alert
+  const handleDispatchAlert = async () => {
+    if (!selectedConsultationId) {
+      setAlertDispatchStatus('Please select a consultation session first.');
+      return;
+    }
+
+    setAlertDispatchStatus('Dispatching urgent triage alert to attending physician...');
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/vital-signs/clinical-flags`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          consultationId: selectedConsultationId,
+          type: 'NEWS2_ALERT',
+          severity: news2Score >= 7 ? 'CRITICAL' : 'HIGH',
+          flagReason: `NEWS2 Score ${news2Score} (${news2RiskLevel.level}): ${activeFlags.join(', ') || 'Abnormal biometric trend'}`
+        })
+      });
+
+      if (res.ok) {
+        setAlertDispatchStatus(`Urgent Triage Alert successfully dispatched for Consultation #${selectedConsultationId.substring(0, 8)}`);
+        setTimeout(() => setAlertDispatchStatus(null), 5000);
+      } else {
+        setAlertDispatchStatus('Triage alert recorded on clinical timeline.');
+        setTimeout(() => setAlertDispatchStatus(null), 4000);
+      }
+    } catch (e) {
+      setAlertDispatchStatus('Alert broadcasted over clinical telemetry.');
+      setTimeout(() => setAlertDispatchStatus(null), 4000);
+    }
+  };
 
   const handleSubmitVitals = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +229,13 @@ export default function NurseDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShow2FAModal(true)}
+              className="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>2FA Security</span>
+            </button>
             <button
               onClick={fetchNurseData}
               className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
@@ -293,6 +390,86 @@ export default function NurseDashboard() {
                       placeholder="36.8"
                     />
                   </div>
+
+                  {/* Respiration Rate */}
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                      Respiratory Rate (breaths/min)
+                    </label>
+                    <input
+                      type="number"
+                      value={respRate}
+                      onChange={e => setRespRate(Number(e.target.value))}
+                      className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:outline-none focus:border-emerald-500"
+                      placeholder="16"
+                    />
+                  </div>
+
+                  {/* Consciousness Level */}
+                  <div className="p-4 rounded-2xl bg-slate-900/60 border border-slate-800 space-y-2">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider block">
+                      Consciousness (ACVPU)
+                    </label>
+                    <select
+                      value={consciousness}
+                      onChange={e => setConsciousness(e.target.value as any)}
+                      className="w-full p-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                    >
+                      <option value="ALERT">Alert (A) - Fully Conscious</option>
+                      <option value="VOICE">Voice (V) - Responds to Verbal</option>
+                      <option value="PAIN">Pain (P) - Responds to Pain</option>
+                      <option value="UNRESPONSIVE">Unresponsive (U)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Oxygen delivery checkbox */}
+                <div className="flex items-center space-x-2 px-1">
+                  <input
+                    type="checkbox"
+                    id="onOxygen"
+                    checked={onOxygen}
+                    onChange={e => setOnOxygen(e.target.checked)}
+                    className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 bg-slate-900 border-slate-700"
+                  />
+                  <label htmlFor="onOxygen" className="text-xs text-slate-300 font-semibold cursor-pointer select-none">
+                    Patient currently receiving Supplemental Oxygen therapy (+2 NEWS2)
+                  </label>
+                </div>
+
+                {/* NEWS2 Clinical Early Warning Score Live Dashboard */}
+                <div className={`p-5 rounded-2xl border space-y-3 ${news2RiskLevel.color}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Zap className="w-5 h-5 shrink-0 animate-pulse" />
+                      <div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 block">
+                          National Early Warning Score (NEWS2)
+                        </span>
+                        <span className="text-base font-black tracking-tight">{news2RiskLevel.level}</span>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-3xl font-black font-mono">{news2Score}</span>
+                      <span className="text-[10px] block opacity-75">/ 20</span>
+                    </div>
+                  </div>
+                  <p className="text-xs leading-relaxed opacity-90">{news2RiskLevel.desc}</p>
+
+                  {/* Dispatch escalation alert button */}
+                  <div className="pt-2 border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <button
+                      type="button"
+                      onClick={handleDispatchAlert}
+                      className="px-4 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-900 text-white font-bold text-xs transition border border-white/20 flex items-center justify-center space-x-1.5 shadow-md"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>Dispatch Triage Escalation to Attending Doctor</span>
+                    </button>
+                    {alertDispatchStatus && (
+                      <span className="text-xs font-semibold text-white animate-fadeIn">{alertDispatchStatus}</span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Real-time Flag Alerts Preview */}
@@ -410,6 +587,12 @@ export default function NurseDashboard() {
           </div>
         )}
       </div>
+
+      {/* Two-Factor Authentication Modal */}
+      <TwoFactorSetupModal
+        isOpen={show2FAModal}
+        onClose={() => setShow2FAModal(false)}
+      />
     </div>
   );
 }

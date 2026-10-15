@@ -17,8 +17,19 @@ import {
   Shield,
   RefreshCw,
   ExternalLink,
-  Lock
+  Lock,
+  Printer,
+  PlusCircle,
+  MessageSquare,
+  KeyRound,
+  Stethoscope,
+  X,
+  Send,
+  User
 } from 'lucide-react';
+import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
+import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
+import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -33,9 +44,42 @@ export default function PatientDashboard() {
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
+  // New Modals State
+  const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [showBookModal, setShowBookModal] = useState(false);
+
+  // Booking Form State
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [bookDoctorId, setBookDoctorId] = useState('');
+  const [bookDate, setBookDate] = useState('');
+  const [bookTime, setBookTime] = useState('10:00');
+  const [bookReason, setBookReason] = useState('General Telehealth Consultation');
+  const [bookSymptoms, setBookSymptoms] = useState('');
+  const [bookNotes, setBookNotes] = useState('');
+  const [bookingSubmitting, setBookingSubmitting] = useState(false);
+
   useEffect(() => {
     fetchPatientData();
+    fetchDoctors();
   }, [user]);
+
+  const fetchDoctors = async () => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/consultations/doctors`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        setDoctorsList(Array.isArray(data) ? data : []);
+        if (data.length > 0 && !bookDoctorId) {
+          setBookDoctorId(data[0].id);
+        }
+      }
+    } catch (e) {
+      console.error('Failed to load doctors list', e);
+    }
+  };
 
   const fetchPatientData = async () => {
     setLoading(true);
@@ -56,6 +100,48 @@ export default function PatientDashboard() {
       console.error('Error loading patient dashboard data', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleBookConsultation = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!bookDoctorId || !bookDate || !bookTime) {
+      setActionMessage('Please select a doctor, appointment date, and time.');
+      return;
+    }
+
+    setBookingSubmitting(true);
+    try {
+      const headers = getAuthHeaders();
+      const scheduledAt = new Date(`${bookDate}T${bookTime}:00`).toISOString();
+
+      const res = await fetch(`${API_BASE}/consultations/book`, {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doctorId: bookDoctorId,
+          scheduledAt,
+          reason: bookReason,
+          symptoms: bookSymptoms,
+          notes: bookNotes
+        })
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage('Appointment successfully booked with your physician!');
+        setShowBookModal(false);
+        setBookSymptoms('');
+        setBookNotes('');
+        fetchPatientData();
+        setTimeout(() => setActionMessage(null), 5000);
+      } else {
+        setActionMessage(data.error || 'Failed to book consultation');
+      }
+    } catch (e: any) {
+      setActionMessage(`Error: ${e.message}`);
+    } finally {
+      setBookingSubmitting(false);
     }
   };
 
@@ -141,7 +227,28 @@ export default function PatientDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowChatDrawer(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Care Chat</span>
+            </button>
+            <button
+              onClick={() => setShow2FAModal(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>2FA Security</span>
+            </button>
+            <button
+              onClick={() => setShowBookModal(true)}
+              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-1.5"
+            >
+              <PlusCircle className="w-4 h-4" />
+              <span>Book Consultation</span>
+            </button>
             <button
               onClick={fetchPatientData}
               className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
@@ -206,12 +313,25 @@ export default function PatientDashboard() {
                 <Calendar className="w-5 h-5 text-cyan-400" />
                 <span>Your Telemedicine Consultations</span>
               </h2>
+              <button
+                onClick={() => setShowBookModal(true)}
+                className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-md shadow-emerald-600/20"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>Book New Consultation</span>
+              </button>
             </div>
 
             {appointments.length === 0 ? (
               <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-3">
                 <Calendar className="w-12 h-12 text-slate-500 mx-auto" />
                 <p className="text-sm text-slate-400">No scheduled consultations found on record.</p>
+                <button
+                  onClick={() => setShowBookModal(true)}
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition"
+                >
+                  Schedule Your First Appointment
+                </button>
               </div>
             ) : (
               <div className="grid gap-4">
@@ -367,6 +487,13 @@ export default function PatientDashboard() {
 
                     <div className="flex items-center gap-2">
                       <button
+                        onClick={() => setSelectedRxForDoc(rx)}
+                        className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1.5 shadow-md shadow-cyan-600/10"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print / QR Rx</span>
+                      </button>
+                      <button
                         onClick={() => navigate(`/prescriptions/${rx.id}`)}
                         className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-white font-semibold text-xs transition"
                       >
@@ -497,6 +624,170 @@ export default function PatientDashboard() {
           </div>
         )}
       </div>
+
+      {/* Official DEA EPCS Prescription Document & QR Modal */}
+      {selectedRxForDoc && (
+        <PrescriptionDocumentModal
+          prescription={selectedRxForDoc}
+          onClose={() => setSelectedRxForDoc(null)}
+        />
+      )}
+
+      {/* Two-Factor Authentication Modal */}
+      <TwoFactorSetupModal
+        isOpen={show2FAModal}
+        onClose={() => setShow2FAModal(false)}
+      />
+
+      {/* Real-Time Encrypted Clinical Care Chat Drawer */}
+      <ClinicalChatDrawer
+        isOpen={showChatDrawer}
+        onClose={() => setShowChatDrawer(false)}
+        recipientName="Attending Care Team"
+        recipientRole="DOCTOR"
+      />
+
+      {/* Patient Appointment Booking & Clinical Intake Modal */}
+      {showBookModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden my-8 p-6 sm:p-8 space-y-6 animate-fadeIn">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                  <Calendar className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Book Telemedicine Consultation</h3>
+                  <p className="text-xs text-slate-400">Select physician and complete clinical intake</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowBookModal(false)}
+                className="p-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleBookConsultation} className="space-y-4">
+              {/* Doctor Selector */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Choose Attending Physician *
+                </label>
+                <select
+                  value={bookDoctorId}
+                  onChange={e => setBookDoctorId(e.target.value)}
+                  required
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Select a physician...</option>
+                  {doctorsList.map(doc => (
+                    <option key={doc.id} value={doc.id}>
+                      Dr. {doc.firstName} {doc.lastName} — {doc.specialty || 'General Practice'} ({doc.medicalLicenseNo || 'NPI-Verified'})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date & Time Grid */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Appointment Date *
+                  </label>
+                  <input
+                    type="date"
+                    value={bookDate}
+                    onChange={e => setBookDate(e.target.value)}
+                    required
+                    min={new Date().toISOString().split('T')[0]}
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                    Session Time *
+                  </label>
+                  <input
+                    type="time"
+                    value={bookTime}
+                    onChange={e => setBookTime(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              {/* Reason for Visit */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Reason for Visit *
+                </label>
+                <select
+                  value={bookReason}
+                  onChange={e => setBookReason(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="General Telehealth Consultation">General Telehealth Consultation</option>
+                  <option value="Cardiology Follow-Up">Cardiology Follow-Up</option>
+                  <option value="Prescription Refill Review">Prescription Refill Review</option>
+                  <option value="Dermatology Assessment">Dermatology Assessment</option>
+                  <option value="Mental Health & Behavioral Therapy">Mental Health & Behavioral Therapy</option>
+                  <option value="Urgent Care Symptom Evaluation">Urgent Care Symptom Evaluation</option>
+                </select>
+              </div>
+
+              {/* Chief Complaints / Symptoms */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Primary Symptoms & Duration
+                </label>
+                <input
+                  type="text"
+                  value={bookSymptoms}
+                  onChange={e => setBookSymptoms(e.target.value)}
+                  placeholder="e.g. Mild chest tightness, headache for 2 days"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Intake Notes */}
+              <div>
+                <label className="block text-[11px] font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+                  Pre-Consultation Clinical Intake Notes (Encrypted)
+                </label>
+                <textarea
+                  rows={3}
+                  value={bookNotes}
+                  onChange={e => setBookNotes(e.target.value)}
+                  placeholder="Any current medications, known drug allergies, or clinical history for your doctor..."
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="flex items-center space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowBookModal(false)}
+                  className="w-1/3 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={bookingSubmitting}
+                  className="w-2/3 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center space-x-1.5"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>{bookingSubmitting ? 'Confirming Booking...' : 'Confirm Appointment'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

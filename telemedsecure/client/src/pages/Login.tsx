@@ -42,6 +42,7 @@ export default function Login() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showTotpField, setShowTotpField] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
 
   // Patient registration toggle (Self-service ONLY for Patients)
   const [isPatientRegister, setIsPatientRegister] = useState(false);
@@ -192,13 +193,16 @@ export default function Login() {
     }
 
     // Unified sign in for Doctor, Nurse, Admin, or Patient
-    const res = await login(email.trim().toLowerCase(), password);
+    const res = await login(email.trim().toLowerCase(), password, totpCode || undefined);
     if (res.success) {
       // Direct navigation to user's authorized role dashboard
       const storedUser = localStorage.getItem('telemed_user');
       const parsed = storedUser ? JSON.parse(storedUser) : null;
       const rolePath = parsed?.role ? `/${parsed.role.toLowerCase()}` : '/dashboard';
       navigate(rolePath);
+    } else if (res.requires2FA) {
+      setShowTotpField(true);
+      setError('Two-Factor Authentication is active on this account. Enter your 6-digit authenticator code from Google Authenticator or Authy.');
     } else {
       setError(res.error || 'Invalid email or password.');
     }
@@ -789,6 +793,28 @@ export default function Login() {
                   <p className="text-[10px] text-red-400 mt-1">{validationErrors.password}</p>
                 )}
               </div>
+
+              {/* Two-Factor Authenticator (TOTP) Code Field */}
+              {showTotpField && (
+                <div className="space-y-1.5 animate-fadeIn p-4 rounded-2xl bg-cyan-950/40 border border-cyan-500/30">
+                  <label className="block text-xs font-bold text-cyan-300 uppercase tracking-wider flex items-center space-x-1.5">
+                    <KeyRound className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Two-Factor Authenticator Code (TOTP) *</span>
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    required
+                    className="w-full text-center tracking-widest text-lg font-mono px-4 py-2.5 rounded-xl bg-slate-900 border border-cyan-500/50 text-white focus:outline-none focus:border-cyan-400 placeholder-slate-600"
+                  />
+                  <p className="text-[10px] text-slate-400">
+                    Open your authenticator app (Google Authenticator, Authy, etc.) to view your 6-digit code.
+                  </p>
+                </div>
+              )}
 
               {/* Submit Button */}
               <button

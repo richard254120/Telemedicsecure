@@ -19,7 +19,7 @@ interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string, totp?: string) => Promise<{ success: boolean; error?: string; requires2FA?: boolean }>;
   logout: () => void;
   getAuthHeaders: () => Record<string, string>;
 }
@@ -79,19 +79,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, password: string, totp?: string): Promise<{ success: boolean; error?: string; requires2FA?: boolean }> => {
     try {
       console.log('Attempting login to:', `${API_BASE}/auth/login`);
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+        body: JSON.stringify({ email, password, totp })
       });
       console.log('Login response status:', res.status, res.statusText);
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
         console.error('Login failed:', errorData);
-        return { success: false, error: errorData.error || 'Authentication failed' };
+        return {
+          success: false,
+          error: errorData.error || 'Authentication failed',
+          requires2FA: !!errorData.requires2FA
+        };
       }
       const data = await res.json();
       console.log('Login successful:', data);

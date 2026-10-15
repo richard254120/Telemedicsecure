@@ -33,8 +33,11 @@ import {
   Stethoscope,
   HeartPulse,
   UserPlus,
-  KeyRound
+  KeyRound,
+  Printer
 } from 'lucide-react';
+import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
+import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import {
   ResponsiveContainer,
   PieChart,
@@ -65,6 +68,8 @@ export default function AdminDashboard() {
   const [invitations, setInvitations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
+  const [show2FAModal, setShow2FAModal] = useState<boolean>(false);
 
   // Invitation creation state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -331,7 +336,14 @@ export default function AdminDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShow2FAModal(true)}
+              className="px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>2FA Security</span>
+            </button>
             <button
               onClick={fetchAllAdminData}
               className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
@@ -1359,6 +1371,17 @@ export default function AdminDashboard() {
                         )}
                       </div>
                     </div>
+
+                    {/* Admin Document Inspection Action */}
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-700/60">
+                      <button
+                        onClick={() => setSelectedRxForDoc(rx)}
+                        className="px-3.5 py-1.5 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1.5 shadow-md"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Inspect Official Rx Document & QR</span>
+                      </button>
+                    </div>
                   </div>
                 ))
               )}
@@ -1452,6 +1475,20 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Official DEA EPCS Prescription Document & QR Modal */}
+      {selectedRxForDoc && (
+        <PrescriptionDocumentModal
+          prescription={selectedRxForDoc}
+          onClose={() => setSelectedRxForDoc(null)}
+        />
+      )}
+
+      {/* Two-Factor Authentication Modal */}
+      <TwoFactorSetupModal
+        isOpen={show2FAModal}
+        onClose={() => setShow2FAModal(false)}
+      />
     </div>
   );
 }

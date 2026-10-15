@@ -76,7 +76,118 @@ router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res)
   }
 });
 
-// Only licensed DOCTOR can schedule clinical consultations
+// Verified Doctors directory for patient booking
+router.get('/doctors', async (req, res) => {
+  try {
+    const doctors = await prisma.user.findMany({
+      where: { role: Role.DOCTOR, isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        specialty: true,
+        medicalLicenseNo: true,
+        verificationStatus: true
+      },
+      orderBy: { lastName: 'asc' }
+    });
+    res.json(doctors);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch doctors directory', details: err.message });
+  }
+});
+
+// Patient Self-Booking Endpoint
+router.post('/book', requireRole([Role.PATIENT, Role.DOCTOR]), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const patientId = user.role === Role.PATIENT ? user.id : req.body.patientId;
+    const { doctorId, scheduledAt, reason, symptoms, notes } = req.body;
+
+    if (!doctorId || !scheduledAt) {
+      return res.status(400).json({ error: 'Doctor selection and scheduled appointment time are required' });
+    }
+
+    // Verify GDPR Consent
+    const consentRecord = await prisma.consent.findFirst({
+      where: { patientId, purpose: 'TELEMEDICINE_TREATMENT' },
+      orderBy: { grantedAt: 'desc' },
+    });
+
+    if (consentRecord && !consentRecord.granted) {
+      return res.status(403).json({
+        error: 'GDPR Compliance Error: Please grant treatment consent in your privacy settings before booking.',
+      });
+    }
+
+    if (!consentRecord) {
+      await gdprService.grantConsent({
+        patientId,
+        purpose: 'TELEMEDICINE_TREATMENT',
+        ipAddress: req.ip
+      });
+    }
+
+    // Encrypt clinical intake notes
+    let encryptedNotes: string | null = null;
+    let notesIv: string | null = null;
+    let notesAuthTag: string | null = null;
+    let encryptedDek: string | null = null;
+    let dekIv: string | null = null;
+    let dekAuthTag: string | null = null;
+
+    const intakeData = JSON.stringify({
+      type: 'PATIENT_SELF_BOOKING',
+      reason: reason || 'General Telehealth Consultation',
+      symptoms: symptoms || 'Routine follow-up',
+      notes: notes || '',
+      bookedAt: new Date().toISOString()
+    });
+
+    try {
+      const enc = encryptDataEnvelope(intakeData);
+      encryptedNotes = enc.ciphertext;
+      notesIv = enc.iv;
+      notesAuthTag = enc.authTag;
+      encryptedDek = enc.encryptedDek;
+      dekIv = enc.dekIv;
+      dekAuthTag = enc.dekAuthTag;
+    } catch (e) {
+      console.warn('Note encryption warning during booking:', e);
+    }
+
+    const consultation = await prisma.consultation.create({
+      data: {
+        patientId,
+        doctorId,
+        scheduledAt: new Date(scheduledAt),
+        encryptedNotes,
+        notesIv,
+        notesAuthTag,
+        encryptedDek,
+        dekIv,
+        dekAuthTag
+      },
+      include: {
+        doctor: { select: { firstName: true, lastName: true, specialty: true } }
+      }
+    });
+
+    await createChainedAuditEvent({
+      action: 'BOOK_CONSULTATION',
+      resource: `Consultation:${consultation.id}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown'
+    });
+
+    res.status(201).json(consultation);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to book consultation', details: err.message });
+  }
+});
+
+// Only licensed DOCTOR can schedule clinical consultations directly
 router.post('/', requireRole([Role.DOCTOR]), async (req, res) => {
   const { patientId, scheduledAt } = req.body;
   const doctorId = (req as any).user.id;

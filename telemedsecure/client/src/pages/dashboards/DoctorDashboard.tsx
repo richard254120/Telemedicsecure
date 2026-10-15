@@ -32,9 +32,14 @@ import {
   Check,
   ExternalLink,
   Award,
-  AlertCircle
+  AlertCircle,
+  Printer,
+  MessageSquare
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
+import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
+import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
+import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 
 export interface PatientSummary {
   id: string;
@@ -108,6 +113,9 @@ export default function DoctorDashboard() {
   const [recordDiagnosis, setRecordDiagnosis] = useState('');
   const [recordClinicalNotes, setRecordClinicalNotes] = useState('');
   const [recordSubmitting, setRecordSubmitting] = useState(false);
+  const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
 
   useEffect(() => {
     fetchDoctorData();
@@ -428,7 +436,21 @@ export default function DoctorDashboard() {
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setShowChatDrawer(true)}
+              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <MessageSquare className="w-4 h-4" />
+              <span>Care Chat</span>
+            </button>
+            <button
+              onClick={() => setShow2FAModal(true)}
+              className="px-3.5 py-3 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>2FA Security</span>
+            </button>
             <button
               onClick={fetchDoctorData}
               disabled={loading}
@@ -902,6 +924,13 @@ export default function DoctorDashboard() {
                     </div>
 
                     <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setSelectedRxForDoc(rx)}
+                        className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1.5 shadow-md shadow-cyan-600/10"
+                      >
+                        <Printer className="w-3.5 h-3.5" />
+                        <span>Print / QR Rx</span>
+                      </button>
                       <button
                         onClick={() => navigate(`/prescriptions/${rx.id}/verify`)}
                         className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1"
@@ -1432,6 +1461,28 @@ export default function DoctorDashboard() {
           </div>
         </div>
       )}
+
+      {/* Official DEA EPCS Prescription Document & QR Modal */}
+      {selectedRxForDoc && (
+        <PrescriptionDocumentModal
+          prescription={selectedRxForDoc}
+          onClose={() => setSelectedRxForDoc(null)}
+        />
+      )}
+
+      {/* Two-Factor Authentication Modal */}
+      <TwoFactorSetupModal
+        isOpen={show2FAModal}
+        onClose={() => setShow2FAModal(false)}
+      />
+
+      {/* Real-Time Encrypted Clinical Care Chat Drawer */}
+      <ClinicalChatDrawer
+        isOpen={showChatDrawer}
+        onClose={() => setShowChatDrawer(false)}
+        recipientName={activePatient ? `${activePatient.firstName} ${activePatient.lastName}` : "Patient Consultation"}
+        recipientRole="PATIENT"
+      />
 
     </div>
   );
