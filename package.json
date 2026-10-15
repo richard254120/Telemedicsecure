@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "dev": "(npm --prefix telemedsecure/server run dev & npm --prefix telemedsecure/client run dev)",
+    "dev:client": "npm --prefix telemedsecure/client run dev",
+    "dev:server": "npm --prefix telemedsecure/server run dev",
     "build": "npm --prefix telemedsecure/client run build && npm --prefix telemedsecure/server run build",
     "start": "npm --prefix telemedsecure/server run start",
     "prod": "npm --prefix telemedsecure/client run build && npm --prefix telemedsecure/server run start",
