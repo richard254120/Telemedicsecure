@@ -1,3 +1,4 @@
+import { Request, Response, NextFunction } from 'express';
 import { createChainedAuditEvent } from '../services/audit.service';
 
 const logAccessDenied = async (userId: string | null, path: string, ip?: string) => {

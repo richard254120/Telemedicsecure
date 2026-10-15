@@ -10,7 +10,7 @@ import { requireAuth } from '../middlewares/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
-const generateTokens = (user) => {
+const generateTokens = (user: any) => {
   const accessToken = jwt.sign({ id: user.id, role: user.role, mustChangePassword: user.mustChangePassword }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
   const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET || 'rsecret', { expiresIn: '7d' });
   return { accessToken, refreshToken };
