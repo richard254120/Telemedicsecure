@@ -227,7 +227,7 @@ class SMSService {
     medicationCount: number;
     pharmacyName?: string;
   }) {
-    const pharmacy = params.pharmacyName || 'St. Jude Clinical Pharmacy';
+    const pharmacy = params.pharmacyName || 'TeleMedSecure Clinical Pharmacy';
     const msg = `TeleMedSecure Rx: Hello ${params.patientName}, your prescription #${params.rxId.slice(0, 8).toUpperCase()} (${params.medicationCount} item${params.medicationCount > 1 ? 's' : ''}) has been verified and dispensed by ${pharmacy}. Please follow all dosage instructions.`;
 
     return this.sendSMS({

@@ -253,7 +253,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
           headers,
           body: JSON.stringify({
             prescriptionId: rxId,
-            pharmacyName: 'St. Jude Clinical Hospital Pharmacy'
+            pharmacyName: 'TeleMedSecure Clinical Pharmacy'
           })
         }).catch(console.warn);
 
@@ -1177,7 +1177,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
                         headers: getAuthHeaders(),
                         body: JSON.stringify({
                           to: receptionPhone.trim(),
-                          message: `TeleMedSecure: Welcome ${receptionPatientName || 'Patient'} to St. Jude Hospital. Your telemedicine consultation room is ready. Connect securely at: ${window.location.origin}/waiting-room/direct`,
+                          message: `TeleMedSecure: Welcome ${receptionPatientName || 'Patient'} to TeleMedSecure Clinical Health System. Your telemedicine consultation room is ready. Connect securely at: ${window.location.origin}/waiting-room/direct`,
                           purpose: 'DIRECT_JOIN_LINK'
                         })
                       });

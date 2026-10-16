@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE } from '../../config';
@@ -59,6 +59,18 @@ export default function PatientDashboard() {
   const [bookSymptoms, setBookSymptoms] = useState('');
   const [bookNotes, setBookNotes] = useState('');
   const [bookingSubmitting, setBookingSubmitting] = useState(false);
+
+  // Dynamically resolve attending physician name from active appointments or registered doctors
+  const attendingDoctorName = useMemo(() => {
+    const activeAppt = appointments.find((a: any) => a.doctor?.firstName);
+    if (activeAppt?.doctor) {
+      return `Dr. ${activeAppt.doctor.firstName} ${activeAppt.doctor.lastName}`;
+    }
+    if (doctorsList.length > 0) {
+      return `Dr. ${doctorsList[0].firstName} ${doctorsList[0].lastName}`;
+    }
+    return 'Attending Physician';
+  }, [appointments, doctorsList]);
 
   useEffect(() => {
     fetchPatientData();
@@ -651,7 +663,7 @@ export default function PatientDashboard() {
         isOpen={showChatDrawer}
         onClose={() => setShowChatDrawer(false)}
         consultationId={`care-team-patient-${user?.id || 'default'}`}
-        recipientName="Attending Care Team (Dr. Mitchell & Clinical Staff)"
+        recipientName={`Attending Care Team (${attendingDoctorName} & Clinical Staff)`}
         recipientRole="CARE_TEAM"
       />
 

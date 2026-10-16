@@ -103,35 +103,104 @@ export class ChatService {
   }
 
   /**
-   * Intelligently dispatches care team triage guidance
+   * Intelligently dispatches care team triage guidance using actual clinical staff from the database
    */
-  private triggerCareTeamTriageResponse(channelId: string, patientText: string, patientName: string) {
+  private async triggerCareTeamTriageResponse(channelId: string, patientText: string, patientName: string) {
     const lower = patientText.toLowerCase();
 
+    // Dynamically query database for attending doctor, nurse, and pharmacist
+    let doctorName = 'Attending Physician';
+    let nurseName = 'On-Duty Triage Nurse';
+    let pharmacistName = 'Clinical Pharmacist';
+
+    try {
+      let doctorUser: any = null;
+      let patientId: string | undefined;
+
+      if (channelId.startsWith('care-team-patient-')) {
+        patientId = channelId.replace('care-team-patient-', '');
+      } else if (channelId.startsWith('consultation-')) {
+        const consultId = channelId.replace('consultation-', '');
+        const consult = await prisma.consultation.findUnique({
+          where: { id: consultId },
+          include: { doctor: true }
+        });
+        if (consult?.doctor) {
+          doctorUser = consult.doctor;
+        }
+      }
+
+      // If we have a patient ID, find their active consultation or assigned doctor
+      if (patientId && !doctorUser) {
+        const recentConsult = await prisma.consultation.findFirst({
+          where: { patientId },
+          orderBy: { scheduledAt: 'desc' },
+          include: { doctor: true }
+        });
+        if (recentConsult?.doctor) {
+          doctorUser = recentConsult.doctor;
+        }
+      }
+
+      // If still no specific doctor assigned, find active registered doctor from database
+      if (!doctorUser) {
+        doctorUser = await prisma.user.findFirst({
+          where: { role: 'DOCTOR', isActive: true },
+          orderBy: { createdAt: 'desc' }
+        });
+      }
+
+      // Query active registered nurse from database
+      const nurseUser = await prisma.user.findFirst({
+        where: { role: 'NURSE', isActive: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      // Query active registered pharmacist from database
+      const pharmacistUser = await prisma.user.findFirst({
+        where: { role: 'PHARMACIST', isActive: true },
+        orderBy: { createdAt: 'desc' }
+      });
+
+      if (doctorUser) {
+        doctorName = `Dr. ${doctorUser.firstName} ${doctorUser.lastName}`;
+      }
+      if (nurseUser) {
+        nurseName = `Nurse ${nurseUser.firstName} ${nurseUser.lastName}`;
+      }
+      if (pharmacistUser) {
+        pharmacistName = `Pharmacist ${pharmacistUser.firstName} ${pharmacistUser.lastName}`;
+      }
+    } catch (err) {
+      console.error('Error fetching clinical care team staff from DB for chat triage:', err);
+    }
+
+    const patientFirstName = (patientName || 'Patient').trim().split(' ')[0];
+
     let replyText =
-      `Thank you ${patientName.split(' ')[0] || ''}, your message has been encrypted and routed to your Attending Care Team. Dr. Sarah Mitchell and the on-duty triage nurse have been notified.`;
+      `Thank you ${patientFirstName}, your message has been encrypted and routed to your Attending Care Team. ${doctorName} and ${nurseName} have been notified.`;
     let triageRole = 'CARE_TEAM';
-    let authorName = 'Attending Care Team';
+    let authorName = `${nurseName} (Clinical Triage)`;
 
     if (lower.includes('chest pain') || lower.includes('shortness of breath') || lower.includes('breathing')) {
       replyText =
-        `⚠️ URGENT CLINICAL NOTICE: If you are experiencing acute chest pressure, sudden shortness of breath, or dizziness, please immediately call 911 or proceed to the nearest emergency facility. Your care team has been marked with a critical alert.`;
+        `⚠️ URGENT CLINICAL NOTICE: If you are experiencing acute chest pressure, sudden shortness of breath, or dizziness, please immediately call 911 or proceed to the nearest emergency facility. Critical priority notification has been transmitted to ${doctorName}.`;
       authorName = 'Emergency Virtual Triage';
       triageRole = 'TRIAGE_OFFICER';
     } else if (lower.includes('prescription') || lower.includes('refill') || lower.includes('pharmacy') || lower.includes('medication')) {
       replyText =
-        `Pharmacy & Therapeutics Notice: Your medication query has been forwarded to Pharmacist Marcus Vance and Dr. Mitchell for electronic review. You will receive an SMS alert once approved.`;
-      authorName = 'Clinical Pharmacy Team';
+        `Pharmacy & Therapeutics Notice: Your medication query has been forwarded to ${pharmacistName} and ${doctorName} for electronic review. You will receive an SMS alert once approved.`;
+      authorName = `${pharmacistName} (Clinical Pharmacy)`;
       triageRole = 'PHARMACIST';
     } else if (lower.includes('fever') || lower.includes('temp') || lower.includes('bp') || lower.includes('vitals') || lower.includes('pain')) {
       replyText =
-        `Triage Alert Received: Your biometric symptoms have been registered in your clinical telemetry file. Please continue logging vitals in the Vitals tab. A nurse is reviewing your acuity score.`;
-      authorName = 'Nurse Elena Rostova (Triage)';
+        `Triage Alert Received: Your biometric symptoms have been registered in your clinical telemetry file. Please continue logging vitals in the Vitals tab. ${nurseName} is reviewing your acuity score.`;
+      authorName = `${nurseName} (Triage)`;
       triageRole = 'NURSE';
     } else if (lower.includes('call') || lower.includes('video') || lower.includes('doctor')) {
       replyText =
-        `Dr. Sarah Mitchell is on clinical duty. You can join the secure zero-knowledge video room directly using the 'Join Video Call' button on your dashboard.`;
-      authorName = 'Dr. Sarah Mitchell, MD';
+        `${doctorName} is on clinical duty. You can join the secure zero-knowledge video room directly using the 'Join Video Call' button on your dashboard.`;
+      authorName = `${doctorName}, MD`;
       triageRole = 'DOCTOR';
     }
 
