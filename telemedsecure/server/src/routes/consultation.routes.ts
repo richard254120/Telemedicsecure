@@ -34,8 +34,8 @@ router.get('/', async (req, res) => {
   res.json(consultations);
 });
 
-// Patients directory for licensed clinical staff (Doctor & Nurse)
-router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
+// Patients directory for clinical staff and administration (Doctor, Nurse, Admin, Receptionist, Care Coordinator, Triage)
+router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.RECEPTIONIST, Role.CARE_COORDINATOR, Role.TRIAGE_OFFICER]), async (req, res) => {
   try {
     const patients = await prisma.user.findMany({
       where: { role: Role.PATIENT },
@@ -187,10 +187,27 @@ router.post('/book', requireRole([Role.PATIENT, Role.DOCTOR]), async (req, res) 
   }
 });
 
-// Only licensed DOCTOR can schedule clinical consultations directly
-router.post('/', requireRole([Role.DOCTOR]), async (req, res) => {
-  const { patientId, scheduledAt } = req.body;
-  const doctorId = (req as any).user.id;
+// Licensed DOCTOR, ADMIN, RECEPTIONIST, or CARE_COORDINATOR can schedule clinical consultations
+router.post('/', requireRole([Role.DOCTOR, Role.ADMIN, Role.RECEPTIONIST, Role.CARE_COORDINATOR]), async (req, res) => {
+  const { patientId, scheduledAt, doctorId: reqDoctorId } = req.body;
+  const user = (req as any).user;
+  let doctorId = user.role === Role.DOCTOR ? user.id : reqDoctorId;
+
+  if (!doctorId) {
+    const defaultDoctor = await prisma.user.findFirst({
+      where: { role: Role.DOCTOR, isActive: true },
+      select: { id: true }
+    });
+    doctorId = defaultDoctor?.id;
+  }
+
+  if (!patientId || !scheduledAt) {
+    return res.status(400).json({ error: 'patientId and scheduledAt are required' });
+  }
+
+  if (!doctorId) {
+    return res.status(400).json({ error: 'Doctor ID is required or no active doctor was found' });
+  }
 
   // Rule Check: Consent Check (GDPR)
   const consentRecord = await prisma.consent.findFirst({
@@ -202,7 +219,7 @@ router.post('/', requireRole([Role.DOCTOR]), async (req, res) => {
     await rulesEngine.triggerViolation({
       ruleId: 'CONSENT_MISSING',
       description: `Attempted to schedule consultation for patient ${patientId} whose GDPR consent was explicitly revoked.`,
-      userId: doctorId,
+      userId: user.id,
       sourceIp: req.ip,
       resource: `Patient:${patientId}`,
     });
@@ -226,7 +243,7 @@ router.post('/', requireRole([Role.DOCTOR]), async (req, res) => {
   await createChainedAuditEvent({
     action: 'CREATE_CONSULTATION',
     resource: `Consultation:${consultation.id}`,
-    userId: doctorId,
+    userId: user.id,
     ipAddress: req.ip || 'unknown'
   });
   res.status(201).json(consultation);

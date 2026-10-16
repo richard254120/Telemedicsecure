@@ -61,6 +61,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   const [imagingType, setImagingType] = useState('Chest X-Ray (PA & Lateral)');
   const [imagingImpression, setImagingImpression] = useState('Clear lung fields. No focal consolidation, pneumothorax, or acute bony abnormalities.');
   const [isUrgentFinding, setIsUrgentFinding] = useState<boolean>(false);
+  const [selectedRadioPatient, setSelectedRadioPatient] = useState<string>('');
 
   // 3. Billing State
   const [billingCode, setBillingCode] = useState('CPT-99214 / ICD-10-I10');
@@ -70,10 +71,20 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   // 4. Triage State
   const [triageAcuity, setTriageAcuity] = useState('ESI-3 (Urgent)');
   const [triageNotes, setTriageNotes] = useState('Mild tachypnea. SpO2 96% on room air. Stable hemodynamics.');
+  const [selectedTriageConsultation, setSelectedTriageConsultation] = useState<string>('');
 
   // 5. Receptionist State
   const [receptionPhone, setReceptionPhone] = useState('');
   const [receptionPatientName, setReceptionPatientName] = useState('');
+  const [receptionPatientId, setReceptionPatientId] = useState('');
+  const [receptionDoctorId, setReceptionDoctorId] = useState('');
+  const [receptionDateTime, setReceptionDateTime] = useState('');
+  const [receptionReason, setReceptionReason] = useState('General Consultation');
+
+  // Directory datasets for inter-service workflows
+  const [patientsList, setPatientsList] = useState<any[]>([]);
+  const [doctorsList, setDoctorsList] = useState<any[]>([]);
+  const [isSubmittingAction, setIsSubmittingAction] = useState<boolean>(false);
 
   useEffect(() => {
     fetchStationData();
@@ -83,13 +94,34 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [rxRes, cRes] = await Promise.all([
+      const [rxRes, cRes, pRes, dRes] = await Promise.all([
         fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+        fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/consultations/patients`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/consultations/doctors`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
-      setPrescriptions(Array.isArray(rxRes) ? rxRes : []);
-      setConsultations(Array.isArray(cRes) ? cRes : []);
+      const validPrescriptions = Array.isArray(rxRes) ? rxRes : [];
+      const validConsultations = Array.isArray(cRes) ? cRes : [];
+      const validPatients = Array.isArray(pRes) ? pRes : [];
+      const validDoctors = Array.isArray(dRes) ? dRes : [];
+
+      setPrescriptions(validPrescriptions);
+      setConsultations(validConsultations);
+      setPatientsList(validPatients);
+      setDoctorsList(validDoctors);
+
+      if (validPatients.length > 0) {
+        if (!selectedLabPatient) setSelectedLabPatient(validPatients[0].id);
+        if (!selectedRadioPatient) setSelectedRadioPatient(validPatients[0].id);
+        if (!receptionPatientId) setReceptionPatientId(validPatients[0].id);
+      }
+      if (validDoctors.length > 0 && !receptionDoctorId) {
+        setReceptionDoctorId(validDoctors[0].id);
+      }
+      if (validConsultations.length > 0 && !selectedTriageConsultation) {
+        setSelectedTriageConsultation(validConsultations[0].id);
+      }
     } catch (err: any) {
       console.warn('Failed to load station datasets:', err);
     } finally {
@@ -233,6 +265,177 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
       setActionError(`Dispense error: ${e.message}`);
     }
   };
+
+  // Encrypt and seal Diagnostic Lab Result (for Lab Tech)
+  const handleSaveLabResult = async () => {
+    setIsSubmittingAction(true);
+    setActionError(null);
+    try {
+      const targetPatientId = selectedLabPatient || patientsList[0]?.id;
+      if (!targetPatientId) {
+        setActionError('Please select a patient to record laboratory findings');
+        return;
+      }
+      const headers = getAuthHeaders();
+      const labPayload = {
+        type: 'LABORATORY_REPORT',
+        testPanel: labTestType,
+        specimen: labSpecimenType,
+        findings: labValueResult,
+        recordedBy: `${user?.firstName} ${user?.lastName} (${user?.medicalLicenseNo || 'MLT-ACTIVE'})`,
+        timestamp: new Date().toISOString()
+      };
+      const res = await fetch(`${API_BASE}/medical-records`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          patientId: targetPatientId,
+          data: labPayload
+        })
+      });
+      if (res.ok) {
+        setActionSuccess(`Laboratory panel [${labTestType}] envelope-encrypted (AES-256-GCM) and sealed to patient EHR. Attending physician notified.`);
+        setTimeout(() => setActionSuccess(null), 5000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setActionError(d.error || 'Failed to seal diagnostic result');
+      }
+    } catch (e: any) {
+      setActionError(`Lab error: ${e.message}`);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Sign and publish Teleradiology Report (for Radiologist)
+  const handleSaveRadiologyReport = async () => {
+    setIsSubmittingAction(true);
+    setActionError(null);
+    try {
+      const targetPatientId = selectedRadioPatient || patientsList[0]?.id;
+      if (!targetPatientId) {
+        setActionError('Please select a patient for imaging review');
+        return;
+      }
+      const headers = getAuthHeaders();
+      const radioPayload = {
+        type: 'RADIOLOGY_REPORT',
+        modality: imagingType,
+        impression: imagingImpression,
+        criticalFinding: isUrgentFinding,
+        radiologist: `Dr. ${user?.firstName} ${user?.lastName} (${user?.medicalLicenseNo || 'RAD-TELE'})`,
+        timestamp: new Date().toISOString()
+      };
+      const res = await fetch(`${API_BASE}/medical-records`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          patientId: targetPatientId,
+          data: radioPayload
+        })
+      });
+      if (res.ok) {
+        if (isUrgentFinding) {
+          fetch(`${API_BASE}/vital-signs/clinical-flags`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              patientId: targetPatientId,
+              type: 'ACUTE_RADIOLOGY_FINDING',
+              severity: 'CRITICAL',
+              flagReason: `Acute Radiological Finding: ${imagingType} - ${imagingImpression.slice(0, 80)}...`
+            })
+          }).catch(console.warn);
+        }
+        setActionSuccess(`Radiological impression for [${imagingType}] cryptographically signed and stored in EHR.${isUrgentFinding ? ' Critical alert broadcasted to clinical team.' : ''}`);
+        setTimeout(() => setActionSuccess(null), 5000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setActionError(d.error || 'Failed to sign and publish radiology report');
+      }
+    } catch (e: any) {
+      setActionError(`Radiology error: ${e.message}`);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Publish Emergency Triage Acuity Assessment (for Triage Officer)
+  const handleSaveTriageAssessment = async () => {
+    setIsSubmittingAction(true);
+    setActionError(null);
+    try {
+      const targetConsultation = consultations.find(c => c.id === selectedTriageConsultation) || consultations[0];
+      const targetPatientId = targetConsultation?.patient?.id || patientsList[0]?.id;
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/vital-signs/clinical-flags`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          consultationId: targetConsultation?.id,
+          patientId: targetPatientId,
+          type: 'TRIAGE_ACUITY_ASSIGNED',
+          severity: triageAcuity.includes('Level 1') || triageAcuity.includes('Level 2') ? 'CRITICAL' : 'HIGH',
+          flagReason: `Triage Acuity [${triageAcuity}]: ${triageNotes}`
+        })
+      });
+      if (res.ok) {
+        setActionSuccess(`Patient triaged at [${triageAcuity}]. Routing priority and clinical flag broadcasted to physician queue.`);
+        setTimeout(() => setActionSuccess(null), 5000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setActionError(d.error || 'Failed to record triage acuity');
+      }
+    } catch (e: any) {
+      setActionError(`Triage error: ${e.message}`);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
+  // Schedule Appointment from Front Desk (for Receptionist)
+  const handleReceptionSchedule = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!receptionDateTime) {
+      setActionError('Please specify scheduled appointment date and time');
+      return;
+    }
+    const targetPatientId = receptionPatientId || patientsList[0]?.id;
+    if (!targetPatientId) {
+      setActionError('Please select a patient');
+      return;
+    }
+    setIsSubmittingAction(true);
+    setActionError(null);
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/consultations`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          patientId: targetPatientId,
+          doctorId: receptionDoctorId || doctorsList[0]?.id,
+          scheduledAt: new Date(receptionDateTime).toISOString(),
+          reason: receptionReason
+        })
+      });
+      if (res.ok) {
+        const created = await res.json();
+        setActionSuccess(`Appointment successfully scheduled! Session ID: #${created.id?.substring(0, 8)}`);
+        setReceptionDateTime('');
+        fetchStationData();
+        setTimeout(() => setActionSuccess(null), 5000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setActionError(d.error || 'Failed to schedule appointment');
+      }
+    } catch (e: any) {
+      setActionError(`Booking error: ${e.message}`);
+    } finally {
+      setIsSubmittingAction(false);
+    }
+  };
+
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10 font-sans">
@@ -419,7 +622,25 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Select Patient *
+                  </label>
+                  <select
+                    value={selectedLabPatient}
+                    onChange={e => setSelectedLabPatient(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
+                  >
+                    {patientsList.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} ({p.email})
+                      </option>
+                    ))}
+                    {patientsList.length === 0 && <option value="">No patients registered</option>}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Specimen Type & Container
@@ -478,14 +699,12 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
 
               <div className="flex justify-end pt-2">
                 <button
-                  onClick={() => {
-                    setActionSuccess(`Laboratory panel [${labTestType}] verified and encrypted into patient EHR. Attending physician notified.`);
-                    setTimeout(() => setActionSuccess(null), 4500);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-2"
+                  onClick={handleSaveLabResult}
+                  disabled={isSubmittingAction}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-2"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>Encrypt & Seal Diagnostic Result</span>
+                  <span>{isSubmittingAction ? 'Encrypting with AES-256-GCM...' : 'Encrypt & Seal Diagnostic Result'}</span>
                 </button>
               </div>
             </div>
@@ -508,7 +727,25 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Select Patient *
+                  </label>
+                  <select
+                    value={selectedRadioPatient}
+                    onChange={e => setSelectedRadioPatient(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-purple-500"
+                  >
+                    {patientsList.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.firstName} {p.lastName} ({p.email})
+                      </option>
+                    ))}
+                    {patientsList.length === 0 && <option value="">No patients registered</option>}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Imaging Modality & Anatomical View
@@ -559,14 +796,12 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
                 </label>
 
                 <button
-                  onClick={() => {
-                    setActionSuccess(`Radiological impression for [${imagingType}] cryptographically signed and stored in EHR.`);
-                    setTimeout(() => setActionSuccess(null), 4500);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow-lg shadow-purple-600/20 flex items-center space-x-2"
+                  onClick={handleSaveRadiologyReport}
+                  disabled={isSubmittingAction}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-purple-600/20 flex items-center space-x-2"
                 >
                   <FileCheck className="w-4 h-4" />
-                  <span>Sign & Publish Radiology Report</span>
+                  <span>{isSubmittingAction ? 'Cryptographically Signing...' : 'Sign & Publish Radiology Report'}</span>
                 </button>
               </div>
             </div>
@@ -659,7 +894,25 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Select Consultation / Patient *
+                  </label>
+                  <select
+                    value={selectedTriageConsultation}
+                    onChange={e => setSelectedTriageConsultation(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-rose-500"
+                  >
+                    {consultations.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : `Consultation #${c.id.slice(0, 6)}`} (Dr. {c.doctor?.lastName || 'Physician'})
+                      </option>
+                    ))}
+                    {consultations.length === 0 && <option value="">No consultations in queue</option>}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                     Emergency Severity Index (ESI)
@@ -704,14 +957,12 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
 
               <div className="flex justify-end pt-2">
                 <button
-                  onClick={() => {
-                    setActionSuccess(`Patient triaged at [${triageAcuity}]. Routing priority updated in doctor's waiting queue.`);
-                    setTimeout(() => setActionSuccess(null), 4500);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-bold text-xs transition shadow-lg shadow-rose-600/20 flex items-center space-x-2"
+                  onClick={handleSaveTriageAssessment}
+                  disabled={isSubmittingAction}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-rose-600/20 flex items-center space-x-2"
                 >
                   <HeartPulse className="w-4 h-4" />
-                  <span>Publish Triage Acuity Assessment</span>
+                  <span>{isSubmittingAction ? 'Publishing Acuity...' : 'Publish Triage Acuity Assessment'}</span>
                 </button>
               </div>
             </div>
@@ -773,14 +1024,105 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
         {/* ============================================================== */}
         {stationRole === 'RECEPTIONIST' && (
           <div className="space-y-6">
+            {/* Quick Schedule Appointment Panel */}
             <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
               <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400">
                   <Calendar className="w-6 h-6" />
                 </div>
                 <div>
-                  <h3 className="text-base font-bold text-white">Patient Access & Direct SMS Waiting Room Invitation</h3>
-                  <p className="text-xs text-slate-400">Register arriving patients, manage appointments, and dispatch secure 1-click video call SMS links</p>
+                  <h3 className="text-base font-bold text-white">Patient Intake & Telemedicine Appointment Scheduling</h3>
+                  <p className="text-xs text-slate-400">Book appointments directly with attending physicians for virtual and in-person clinical encounters</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleReceptionSchedule} className="space-y-4 pt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Select Patient *
+                    </label>
+                    <select
+                      value={receptionPatientId}
+                      onChange={e => setReceptionPatientId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-cyan-500"
+                    >
+                      {patientsList.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.firstName} {p.lastName} ({p.email})
+                        </option>
+                      ))}
+                      {patientsList.length === 0 && <option value="">No patients registered</option>}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Attending Physician *
+                    </label>
+                    <select
+                      value={receptionDoctorId}
+                      onChange={e => setReceptionDoctorId(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-cyan-500"
+                    >
+                      {doctorsList.map(d => (
+                        <option key={d.id} value={d.id}>
+                          Dr. {d.firstName} {d.lastName} ({d.specialty || 'General Practice'})
+                        </option>
+                      ))}
+                      {doctorsList.length === 0 && <option value="">No physicians available</option>}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                      Appointment Date & Time *
+                    </label>
+                    <input
+                      type="datetime-local"
+                      value={receptionDateTime}
+                      onChange={e => setReceptionDateTime(e.target.value)}
+                      required
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Reason for Encounter / Clinical Chief Complaint
+                  </label>
+                  <input
+                    type="text"
+                    value={receptionReason}
+                    onChange={e => setReceptionReason(e.target.value)}
+                    placeholder="e.g. Hypertension review, persistent cough, prescription renewal"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                <div className="flex justify-end pt-1">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingAction}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-cyan-600/20 flex items-center space-x-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{isSubmittingAction ? 'Scheduling...' : 'Confirm & Schedule Appointment'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            {/* Direct SMS Join Link Dispatch */}
+            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+                  <Smartphone className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Direct SMS Waiting Room Invitation</h3>
+                  <p className="text-xs text-slate-400">Dispatch instant 1-click video call SMS join links to patient smartphones</p>
                 </div>
               </div>
 

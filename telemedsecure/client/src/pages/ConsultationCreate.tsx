@@ -33,11 +33,17 @@ export default function ConsultationCreate() {
   const fetchPatients = async () => {
     try {
       const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/admin/users`, { headers });
+      // Use /consultations/patients accessible to all clinical roles
+      const res = await fetch(`${API_BASE}/consultations/patients`, { headers });
       if (res.ok) {
-        const users = await res.json();
-        const patients = users.filter((u: any) => u.role === 'PATIENT');
-        setPatients(patients);
+        const patientsList = await res.json();
+        setPatients(Array.isArray(patientsList) ? patientsList : []);
+      } else {
+        const fallbackRes = await fetch(`${API_BASE}/admin/users`, { headers });
+        if (fallbackRes.ok) {
+          const users = await fallbackRes.json();
+          setPatients(users.filter((u: any) => u.role === 'PATIENT'));
+        }
       }
     } catch (e) {
       console.error('Failed to fetch patients', e);

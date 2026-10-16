@@ -16,7 +16,7 @@ interface VitalsData {
   spO2: number;
 }
 
-router.post('/', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
+router.post('/', requireRole([Role.DOCTOR, Role.NURSE, Role.TRIAGE_OFFICER, Role.ADMIN]), async (req, res) => {
   const { consultationId, vitals } = req.body;
   const v = vitals as VitalsData;
 
@@ -52,6 +52,65 @@ router.post('/', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
   }
 
   res.status(201).json({ id: record.id, message: 'Vitals stored', flagged: flags.length > 0 });
+});
+
+// Create clinical triage flag / escalation alert
+router.post('/clinical-flags', requireRole([Role.DOCTOR, Role.NURSE, Role.TRIAGE_OFFICER, Role.ADMIN]), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const { consultationId, type, severity, flagReason, description, patientId: reqPatientId } = req.body;
+
+    let patientId = reqPatientId;
+    let resolvedConsultationId = consultationId;
+
+    if (consultationId) {
+      const consultation = await prisma.consultation.findUnique({ where: { id: consultationId } });
+      if (consultation) {
+        patientId = consultation.patientId;
+      }
+    }
+
+    if (!resolvedConsultationId && patientId) {
+      const consultation = await prisma.consultation.findFirst({
+        where: { patientId },
+        orderBy: { scheduledAt: 'desc' }
+      });
+      if (consultation) {
+        resolvedConsultationId = consultation.id;
+      }
+    }
+
+    if (!resolvedConsultationId || !patientId) {
+      return res.status(400).json({ error: 'Valid consultation and patient association required to register clinical flag' });
+    }
+
+    const flag = await prisma.clinicalFlag.create({
+      data: {
+        consultationId: resolvedConsultationId,
+        patientId,
+        flagType: type || 'NEWS2_ALERT',
+        description: flagReason || description || 'Clinical escalation flag registered',
+        severity: severity || 'HIGH'
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, email: true } },
+        consultation: { select: { id: true, scheduledAt: true } }
+      }
+    });
+
+    await prisma.auditEvent.create({
+      data: {
+        action: 'CREATE_CLINICAL_FLAG',
+        resource: `ClinicalFlag:${flag.id}`,
+        userId: user.id,
+        ipAddress: req.ip || 'unknown'
+      }
+    });
+
+    res.status(201).json(flag);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to dispatch clinical flag', details: err.message });
+  }
 });
 
 router.get('/:id', async (req, res) => {

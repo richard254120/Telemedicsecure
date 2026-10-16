@@ -69,7 +69,7 @@ router.get('/', async (req, res) => {
  * POST /api/v1/medical-records
  * Create a new encrypted medical record
  */
-router.post('/', requireRole([Role.DOCTOR, Role.NURSE]), async (req, res) => {
+router.post('/', requireRole([Role.DOCTOR, Role.NURSE, Role.LAB_TECHNICIAN, Role.RADIOLOGIST, Role.ADMIN]), async (req, res) => {
   const { patientId, data, unencryptedPhi } = req.body;
   const user = (req as any).user;
 
