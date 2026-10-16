@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
+import ThemeToggle from '../components/ThemeToggle';
 import {
   ShieldCheck,
   FileText,
@@ -138,6 +139,8 @@ export default function Navbar() {
                 Sign In
               </Link>
             )}
+            {/* Theme toggle */}
+            <ThemeToggle />
           </div>
         </div>
       </div>
