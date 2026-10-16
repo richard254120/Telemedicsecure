@@ -257,7 +257,14 @@ export default function PatientDashboard() {
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
             <button
-              onClick={() => navigate('/waiting-room')}
+              onClick={() => {
+                const active = appointments.find(a => a.status === 'IN_PROGRESS') || appointments.find(a => a.status === 'SCHEDULED') || appointments[0];
+                if (active) {
+                  navigate(`/call/${active.id}`);
+                } else {
+                  setActionMessage('No consultations currently booked. Click "Book Consultation" to schedule one.');
+                }
+              }}
               className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/20 flex items-center space-x-2"
             >
               <Video className="w-4 h-4" />

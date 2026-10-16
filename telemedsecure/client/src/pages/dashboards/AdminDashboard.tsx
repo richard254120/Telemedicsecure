@@ -34,7 +34,8 @@ import {
   HeartPulse,
   UserPlus,
   KeyRound,
-  Printer
+  Printer,
+  Smartphone
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -56,7 +57,7 @@ export default function AdminDashboard() {
   const navigate = useNavigate();
   const { user, getAuthHeaders } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'overview' | 'compliance' | 'users' | 'patients' | 'prescriptions' | 'investigation'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'compliance' | 'users' | 'patients' | 'prescriptions' | 'investigation' | 'sms'>('overview');
 
   // State
   const [usersList, setUsersList] = useState<any[]>([]);
@@ -66,6 +67,11 @@ export default function AdminDashboard() {
   const [prescriptionAudits, setPrescriptionAudits] = useState<any[]>([]);
   const [incidents, setIncidents] = useState<any[]>([]);
   const [invitations, setInvitations] = useState<any[]>([]);
+  const [smsLogs, setSmsLogs] = useState<any[]>([]);
+  const [smsStatus, setSmsStatus] = useState<any | null>(null);
+  const [testSmsPhone, setTestSmsPhone] = useState<string>('');
+  const [testSmsMessage, setTestSmsMessage] = useState<string>('');
+  const [isSendingSms, setIsSendingSms] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
@@ -102,14 +108,16 @@ export default function AdminDashboard() {
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [uRes, vRes, aRes, cRes, rxRes, incRes, invRes] = await Promise.all([
+      const [uRes, vRes, aRes, cRes, rxRes, incRes, invRes, sLogs, sStat] = await Promise.all([
         fetch(`${API_BASE}/admin/users`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/compliance/violations`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/compliance/alerts`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/integrity/verify`, { headers }).then(r => r.ok ? r.json() : null),
         fetch(`${API_BASE}/prescriptions/audit/all`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/investigation/incidents`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/admin/invitations`, { headers }).then(r => r.ok ? r.json() : [])
+        fetch(`${API_BASE}/admin/invitations`, { headers }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE}/sms/logs`, { headers }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE}/sms/status`).then(r => r.ok ? r.json() : null),
       ]);
 
       setUsersList(Array.isArray(uRes) ? uRes : []);
@@ -119,6 +127,8 @@ export default function AdminDashboard() {
       setPrescriptionAudits(Array.isArray(rxRes) ? rxRes : []);
       setIncidents(Array.isArray(incRes) ? incRes : []);
       setInvitations(Array.isArray(invRes) ? invRes : []);
+      setSmsLogs(Array.isArray(sLogs) ? sLogs : []);
+      setSmsStatus(sStat);
     } catch (e) {
       console.error('Failed to load admin dashboard data', e);
     } finally {
@@ -480,7 +490,8 @@ export default function AdminDashboard() {
             { id: 'users', label: 'Medical Staff & Provisioning', icon: Users, count: usersList.filter(u => u.role !== 'PATIENT').length },
             { id: 'patients', label: 'Patient Population (Metrics)', icon: User, count: patientCount },
             { id: 'prescriptions', label: 'Prescription Audit Module', icon: FileCheck2, count: prescriptionAudits.length },
-            { id: 'investigation', label: 'Incident Investigation Tool', icon: FileSearch, count: incidents.length }
+            { id: 'investigation', label: 'Incident Investigation Tool', icon: FileSearch, count: incidents.length },
+            { id: 'sms', label: 'SMS Gateway & Audit Logs', icon: Smartphone, count: smsLogs.length }
           ].map(tab => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -806,8 +817,15 @@ export default function AdminDashboard() {
                       onChange={e => setNewStaffRole(e.target.value as UserRole)}
                       className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-semibold focus:outline-none focus:border-blue-500"
                     >
-                      <option value="DOCTOR">DOCTOR (Physician)</option>
+                      <option value="DOCTOR">DOCTOR (Attending Physician)</option>
                       <option value="NURSE">NURSE (Clinical Practitioner)</option>
+                      <option value="PHARMACIST">PHARMACIST (Pharmacy Specialist)</option>
+                      <option value="LAB_TECHNICIAN">LAB_TECHNICIAN (Laboratory Scientist)</option>
+                      <option value="RADIOLOGIST">RADIOLOGIST (Medical Imaging)</option>
+                      <option value="BILLING_OFFICER">BILLING_OFFICER (Billing & Claims)</option>
+                      <option value="TRIAGE_OFFICER">TRIAGE_OFFICER (Triage & ER Intake)</option>
+                      <option value="CARE_COORDINATOR">CARE_COORDINATOR (Care Coordinator)</option>
+                      <option value="RECEPTIONIST">RECEPTIONIST (Front Desk & Scheduling)</option>
                       <option value="ADMIN">ADMIN (System Administrator)</option>
                     </select>
                   </div>
@@ -947,6 +965,13 @@ export default function AdminDashboard() {
                   >
                     <option value="DOCTOR">DOCTOR (Physician)</option>
                     <option value="NURSE">NURSE (Clinical Practitioner)</option>
+                    <option value="PHARMACIST">PHARMACIST (Pharmacy Specialist)</option>
+                    <option value="LAB_TECHNICIAN">LAB_TECHNICIAN (Laboratory Scientist)</option>
+                    <option value="RADIOLOGIST">RADIOLOGIST (Medical Imaging)</option>
+                    <option value="BILLING_OFFICER">BILLING_OFFICER (Billing & Claims)</option>
+                    <option value="TRIAGE_OFFICER">TRIAGE_OFFICER (Triage & ER Intake)</option>
+                    <option value="CARE_COORDINATOR">CARE_COORDINATOR (Care Coordinator)</option>
+                    <option value="RECEPTIONIST">RECEPTIONIST (Front Desk & Scheduling)</option>
                     <option value="ADMIN">ADMIN (System Administrator)</option>
                   </select>
                 </div>
@@ -1092,6 +1117,13 @@ export default function AdminDashboard() {
                             <option value="PATIENT">PATIENT</option>
                             <option value="DOCTOR">DOCTOR</option>
                             <option value="NURSE">NURSE</option>
+                            <option value="PHARMACIST">PHARMACIST</option>
+                            <option value="LAB_TECHNICIAN">LAB_TECHNICIAN</option>
+                            <option value="RADIOLOGIST">RADIOLOGIST</option>
+                            <option value="BILLING_OFFICER">BILLING_OFFICER</option>
+                            <option value="TRIAGE_OFFICER">TRIAGE_OFFICER</option>
+                            <option value="CARE_COORDINATOR">CARE_COORDINATOR</option>
+                            <option value="RECEPTIONIST">RECEPTIONIST</option>
                             <option value="ADMIN">ADMIN</option>
                           </select>
                         </td>
@@ -1470,6 +1502,227 @@ export default function AdminDashboard() {
                     </div>
                   </div>
                 ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Tab 6: SMS Gateway & Communication Audit Logs */}
+        {activeTab === 'sms' && (
+          <div className="space-y-6">
+            {/* Top Gateway Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-cyan-500/30 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
+                    <Smartphone className="w-5 h-5" />
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center space-x-1">
+                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                    <span>{smsStatus?.activeProvider?.toUpperCase() || 'SIMULATED'}</span>
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Active SMS Gateway</h4>
+                <p className="text-xs text-slate-400">Carrier: {smsStatus?.isLiveConfigured ? 'Twilio / Africa\'s Talking' : 'Local GSM Simulated Hub'}</p>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-purple-500/30 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-500/10 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <Send className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full">
+                    {smsLogs.length} Messages
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Dispatched Notifications</h4>
+                <p className="text-xs text-slate-400">Appointments, e-Prescriptions & Vitals</p>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-emerald-500/30 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full">
+                    HIPAA Verified
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Audit Trail Security</h4>
+                <p className="text-xs text-slate-400">Hash-chained with SHA-256 Merkle proofs</p>
+              </div>
+
+              <div className="p-5 rounded-3xl bg-slate-800/80 border border-blue-500/30 shadow-lg space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <UserCheck className="w-5 h-5" />
+                  </div>
+                  <span className="text-[10px] font-mono text-blue-400 bg-blue-500/10 px-2.5 py-0.5 rounded-full truncate max-w-[130px]">
+                    {smsStatus?.defaultSenderNumber || '+1 (555) 019-TELEMED'}
+                  </span>
+                </div>
+                <h4 className="text-sm font-bold text-white">Default Sender ID</h4>
+                <p className="text-xs text-slate-400">Authenticated Clinical Shortcode</p>
+              </div>
+            </div>
+
+            {/* Test SMS Dispatcher Form */}
+            <div className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-xl space-y-4">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Smartphone className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Dispatch Test SMS Alert</h3>
+                  <p className="text-xs text-slate-400">Send an ad-hoc SMS alert or invitation directly through the clinical gateway</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    Recipient Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    placeholder="+254712345678 or +1 (555) 019-3829"
+                    value={testSmsPhone}
+                    onChange={e => setTestSmsPhone(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500 placeholder-slate-500"
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                    SMS Message Content *
+                  </label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="text"
+                      placeholder="TeleMedSecure: Your appointment with Dr. John Doe is scheduled for 2:00 PM. Join securely: https://..."
+                      value={testSmsMessage}
+                      onChange={e => setTestSmsMessage(e.target.value)}
+                      className="flex-1 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs focus:outline-none focus:border-cyan-500 placeholder-slate-500"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!testSmsPhone.trim() || !testSmsMessage.trim()) {
+                          setActionMessage('Please enter both recipient phone and message body.');
+                          return;
+                        }
+                        setIsSendingSms(true);
+                        try {
+                          const res = await fetch(`${API_BASE}/sms/send`, {
+                            method: 'POST',
+                            headers: getAuthHeaders(),
+                            body: JSON.stringify({
+                              to: testSmsPhone.trim(),
+                              message: testSmsMessage.trim(),
+                              purpose: 'GENERAL',
+                            })
+                          });
+                          const data = await res.json();
+                          if (res.ok) {
+                            setActionMessage(`SMS dispatched successfully! Status: ${data.log?.status}`);
+                            setTestSmsMessage('');
+                            fetchAllAdminData();
+                          } else {
+                            setActionMessage(data.error || 'Failed to dispatch SMS');
+                          }
+                        } catch (e: any) {
+                          setActionMessage(`Error: ${e.message}`);
+                        } finally {
+                          setIsSendingSms(false);
+                        }
+                      }}
+                      disabled={isSendingSms}
+                      className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-md shadow-cyan-600/20"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isSendingSms ? 'Dispatching...' : 'Send SMS'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SMS Audit Log Table */}
+            <div className="rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-xl overflow-hidden">
+              <div className="p-6 border-b border-slate-700 flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-bold text-white">Dispatched SMS Notifications Audit</h3>
+                  <p className="text-xs text-slate-400">Immutable ledger of all clinical SMS notifications and delivery receipts</p>
+                </div>
+                <button
+                  onClick={fetchAllAdminData}
+                  className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold flex items-center space-x-1.5 transition"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span>Refresh</span>
+                </button>
+              </div>
+
+              {smsLogs.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 space-y-2">
+                  <Smartphone className="w-10 h-10 mx-auto text-slate-600" />
+                  <p className="text-sm font-semibold text-slate-300">No SMS notifications dispatched yet</p>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    When doctors start video consultations, appointments are scheduled, or prescriptions are dispensed, outbound SMS alerts will appear here in real-time.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-700/60 bg-slate-900/60 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                        <th className="px-6 py-3.5">Timestamp</th>
+                        <th className="px-6 py-3.5">Recipient</th>
+                        <th className="px-6 py-3.5">Purpose</th>
+                        <th className="px-6 py-3.5">Message Excerpt</th>
+                        <th className="px-6 py-3.5">Status</th>
+                        <th className="px-6 py-3.5">Gateway Provider</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-700/40 font-mono">
+                      {smsLogs.map((log: any) => (
+                        <tr key={log.id} className="hover:bg-slate-750/50 transition">
+                          <td className="px-6 py-3.5 text-slate-400 text-[11px] whitespace-nowrap">
+                            {new Date(log.sentAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                          </td>
+                          <td className="px-6 py-3.5 text-cyan-400 font-bold whitespace-nowrap">
+                            {log.to}
+                          </td>
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              log.purpose === 'DIRECT_JOIN_LINK' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
+                              log.purpose === 'APPOINTMENT_REMINDER' ? 'bg-blue-500/20 text-blue-300 border border-blue-500/30' :
+                              log.purpose === 'PRESCRIPTION_READY' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                              log.purpose === 'EMERGENCY_VITALS' ? 'bg-red-500/20 text-red-300 border border-red-500/30 animate-pulse' :
+                              'bg-purple-500/20 text-purple-300 border border-purple-500/30'
+                            }`}>
+                              {log.purpose}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3.5 text-slate-300 font-sans max-w-xs truncate" title={log.message}>
+                            {log.message}
+                          </td>
+                          <td className="px-6 py-3.5 whitespace-nowrap">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                              log.status === 'DELIVERED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                              log.status === 'SIMULATED' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' :
+                              'bg-red-500/20 text-red-400 border border-red-500/30'
+                            }`}>
+                              {log.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-3.5 text-slate-400 uppercase text-[10px]">
+                            {log.provider}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </div>
           </div>

@@ -71,6 +71,21 @@ export const setupSignaling = (io: Server) => {
       socket.to(data.consultationId).emit('chat-message', data);
     });
 
+    // Leave consultation room
+    socket.on('leave-room', (data: { consultationId: string, userId?: string }) => {
+      socket.leave(data.consultationId);
+      socket.to(data.consultationId).emit('user-left', { userId: data.userId });
+      console.log(`User ${data.userId || socket.id} left ${data.consultationId}`);
+    });
+
+    socket.on('disconnecting', () => {
+      for (const room of socket.rooms) {
+        if (room !== socket.id) {
+          socket.to(room).emit('user-left', { socketId: socket.id });
+        }
+      }
+    });
+
     socket.on('disconnect', () => {
       console.log(`Socket disconnected: ${socket.id}`);
     });

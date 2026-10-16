@@ -13,6 +13,7 @@ import integrityRoutes from './routes/integrity.routes';
 import complianceRoutes from './routes/compliance.routes';
 import gdprRoutes from './routes/gdpr.routes';
 import investigationRoutes from './routes/investigation.routes';
+import smsRoutes from './routes/sms.routes';
 
 const app = express();
 
@@ -286,6 +287,8 @@ app.use('/api/v1/integrity', integrityRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
 app.use('/api/v1/gdpr', gdprRoutes);
 app.use('/api/v1/investigation', investigationRoutes);
+app.use('/api/v1/sms', smsRoutes);
+app.use('/api/sms', smsRoutes);
 
 // Fallback for unmatched routes
 app.use((req, res, next) => {

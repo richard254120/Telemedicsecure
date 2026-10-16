@@ -34,7 +34,8 @@ import {
   Award,
   AlertCircle,
   Printer,
-  MessageSquare
+  MessageSquare,
+  Smartphone
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -226,6 +227,16 @@ export default function DoctorDashboard() {
         targetConsultation = await createRes.json();
       }
       if (targetConsultation?.id) {
+        // Dispatch SMS alert to patient asynchronously
+        fetch(`${API_BASE}/sms/doctor-ready`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            consultationId: targetConsultation.id,
+            patientPhone: (activePatient as any).phone || '+1234567890',
+          }),
+        }).catch((err) => console.warn('SMS dispatch warning:', err));
+
         navigate(`/call/${targetConsultation.id}`);
       } else {
         setActionError('Unable to generate consultation session');
@@ -554,6 +565,39 @@ export default function DoctorDashboard() {
                 >
                   <Video className="w-3.5 h-3.5" />
                   <span>Start Video Call</span>
+                </button>
+                <button
+                  onClick={async () => {
+                    const target = patientConsultations.find(c => c.status === 'SCHEDULED' || c.status === 'IN_PROGRESS');
+                    if (!target) {
+                      setActionError('No consultation found for this patient. Click "Start Video Call" to generate a session first.');
+                      return;
+                    }
+                    try {
+                      const res = await fetch(`${API_BASE}/sms/doctor-ready`, {
+                        method: 'POST',
+                        headers: getAuthHeaders(),
+                        body: JSON.stringify({
+                          consultationId: target.id,
+                          patientPhone: (activePatient as any).phone || '+1234567890',
+                        }),
+                      });
+                      const data = await res.json();
+                      if (res.ok) {
+                        setActionSuccess(`Direct join SMS successfully sent to patient! (${data.recipient})`);
+                        setTimeout(() => setActionSuccess(null), 4000);
+                      } else {
+                        setActionError(data.error || 'Failed to dispatch SMS');
+                      }
+                    } catch (e: any) {
+                      setActionError(`SMS dispatch failed: ${e.message}`);
+                    }
+                  }}
+                  className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1.5"
+                  title="SMS Direct Consultation Link to Patient"
+                >
+                  <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>SMS Link</span>
                 </button>
                 <button
                   onClick={() => setShowPrescribeModal(true)}

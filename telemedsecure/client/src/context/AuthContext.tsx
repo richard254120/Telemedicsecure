@@ -1,7 +1,18 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { API_BASE } from '../config';
 
-export type UserRole = 'PATIENT' | 'DOCTOR' | 'NURSE' | 'ADMIN';
+export type UserRole =
+  | 'PATIENT'
+  | 'DOCTOR'
+  | 'NURSE'
+  | 'PHARMACIST'
+  | 'RECEPTIONIST'
+  | 'ADMIN'
+  | 'LAB_TECHNICIAN'
+  | 'RADIOLOGIST'
+  | 'BILLING_OFFICER'
+  | 'TRIAGE_OFFICER'
+  | 'CARE_COORDINATOR';
 
 export interface AuthUser {
   id: string;
