@@ -17,10 +17,56 @@ export interface ClinicalChatMessage {
   encrypted: boolean;
 }
 
+export interface ClinicalChatNotification {
+  id: string;
+  type: 'NEW_CHAT_MESSAGE';
+  userId: string; // The targeted recipient (e.g. doctor)
+  senderId: string;
+  senderName: string;
+  senderRole: string;
+  patientId?: string;
+  patientName: string;
+  channelId: string;
+  text: string;
+  timestamp: string;
+  read: boolean;
+}
+
 // In-memory channel store with persistence across calls and audit anchoring
 const channelMessagesStore = new Map<string, ClinicalChatMessage[]>();
+const userNotificationsStore = new Map<string, ClinicalChatNotification[]>();
 
 export class ChatService {
+  /**
+   * Get all notifications for a specific user
+   */
+  getUserNotifications(userId: string): ClinicalChatNotification[] {
+    return userNotificationsStore.get(userId) || [];
+  }
+
+  /**
+   * Mark a notification as read
+   */
+  markNotificationRead(userId: string, notificationId: string): boolean {
+    const list = userNotificationsStore.get(userId) || [];
+    const notif = list.find((n) => n.id === notificationId);
+    if (notif) {
+      notif.read = true;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Mark all notifications for a user as read
+   */
+  markAllNotificationsRead(userId: string): void {
+    const list = userNotificationsStore.get(userId) || [];
+    list.forEach((n) => {
+      n.read = true;
+    });
+  }
+
   /**
    * Get all messages in a clinical channel
    */
@@ -94,9 +140,12 @@ export class ChatService {
       io.to(channelId).emit('chat-message', newMsg);
     }
 
-    // Auto-triage response if sent by patient to Attending Care Team
+    // Real-time notification dispatch
     if (message.senderRole === 'PATIENT') {
-      this.triggerCareTeamTriageResponse(channelId, message.text, message.senderName);
+      this.dispatchDoctorChatNotification(channelId, newMsg).catch(console.error);
+      this.triggerCareTeamTriageResponse(channelId, message.text, message.senderName).catch(console.error);
+    } else if (message.senderRole === 'DOCTOR') {
+      this.dispatchPatientChatNotification(channelId, newMsg).catch(console.error);
     }
 
     return newMsg;
@@ -226,6 +275,126 @@ export class ChatService {
         io.to(channelId).emit('chat-message', triageMsg);
       }
     }, 1200);
+  }
+
+  /**
+   * Directly routes incoming patient messages to the assigned doctor's private channel and notification queue
+   */
+  private async dispatchDoctorChatNotification(channelId: string, message: ClinicalChatMessage) {
+    try {
+      let patientId: string | undefined;
+      if (channelId.startsWith('care-team-patient-')) {
+        patientId = channelId.replace('care-team-patient-', '');
+      } else if (channelId.startsWith('consultation-')) {
+        const consultId = channelId.replace('consultation-', '');
+        const consult = await prisma.consultation.findUnique({
+          where: { id: consultId },
+          select: { patientId: true, doctorId: true, doctor: true }
+        });
+        if (consult) {
+          patientId = consult.patientId;
+        }
+      }
+
+      if (!patientId && message.senderId) {
+        patientId = message.senderId;
+      }
+
+      // Find the doctor assigned to this patient
+      let targetDoctor: any = null;
+      if (patientId) {
+        const consult = await prisma.consultation.findFirst({
+          where: { patientId },
+          orderBy: { scheduledAt: 'desc' },
+          include: { doctor: true }
+        });
+        if (consult?.doctor) {
+          targetDoctor = consult.doctor;
+        }
+      }
+
+      // If patient does not have a past consultation, target the active doctor in system
+      if (!targetDoctor) {
+        targetDoctor = await prisma.user.findFirst({
+          where: { role: 'DOCTOR', isActive: true },
+          orderBy: { createdAt: 'desc' }
+        });
+      }
+
+      if (targetDoctor) {
+        const notification: ClinicalChatNotification = {
+          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          type: 'NEW_CHAT_MESSAGE',
+          userId: targetDoctor.id,
+          senderId: message.senderId,
+          senderName: message.senderName,
+          senderRole: message.senderRole,
+          patientId,
+          patientName: message.senderName,
+          channelId,
+          text: message.text,
+          timestamp: message.timestamp,
+          read: false,
+        };
+
+        const list = userNotificationsStore.get(targetDoctor.id) || [];
+        list.unshift(notification);
+        userNotificationsStore.set(targetDoctor.id, list.slice(0, 50));
+
+        const io = getIO();
+        if (io) {
+          // Direct real-time alerts to that specific doctor
+          io.to(`user-${targetDoctor.id}`).emit('clinical-notification', notification);
+          io.to(`doctor-${targetDoctor.id}`).emit('clinical-notification', notification);
+          io.to(`user-${targetDoctor.id}`).emit('chat-message', message);
+          io.to(`doctor-${targetDoctor.id}`).emit('chat-message', message);
+          io.to('role-DOCTOR').emit('clinical-notification', notification);
+        }
+      }
+    } catch (err) {
+      console.error('Error dispatching doctor chat notification:', err);
+    }
+  }
+
+  /**
+   * Directly routes incoming physician messages to the patient's private channel and notification queue
+   */
+  private async dispatchPatientChatNotification(channelId: string, message: ClinicalChatMessage) {
+    try {
+      let patientId: string | undefined;
+      if (channelId.startsWith('care-team-patient-')) {
+        patientId = channelId.replace('care-team-patient-', '');
+      }
+
+      if (patientId) {
+        const notification: ClinicalChatNotification = {
+          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          type: 'NEW_CHAT_MESSAGE',
+          userId: patientId,
+          senderId: message.senderId,
+          senderName: message.senderName,
+          senderRole: message.senderRole,
+          patientId,
+          patientName: 'Patient',
+          channelId,
+          text: message.text,
+          timestamp: message.timestamp,
+          read: false,
+        };
+
+        const list = userNotificationsStore.get(patientId) || [];
+        list.unshift(notification);
+        userNotificationsStore.set(patientId, list.slice(0, 50));
+
+        const io = getIO();
+        if (io) {
+          io.to(`user-${patientId}`).emit('clinical-notification', notification);
+          io.to(`user-${patientId}`).emit('chat-message', message);
+        }
+      }
+    } catch (err) {
+      console.error('Error dispatching patient chat notification:', err);
+    }
   }
 }
 

@@ -109,6 +109,10 @@ export const ClinicalChatDrawer: React.FC<ClinicalChatDrawerProps> = ({
     });
 
     newSocket.on('chat-message', (data: any) => {
+      // Discard messages belonging to other patient channels
+      if (data.channelId && data.channelId !== consultationId) {
+        return;
+      }
       setMessages(prev => {
         // Prevent duplicate insertions
         if (prev.some(m => m.id === data.id)) return prev;

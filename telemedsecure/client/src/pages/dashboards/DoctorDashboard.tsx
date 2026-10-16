@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { API_BASE } from '../../config';
+import { API_BASE, WS_URL } from '../../config';
+import { io, Socket } from 'socket.io-client';
 import {
   Calendar,
   Video,
@@ -35,7 +36,8 @@ import {
   AlertCircle,
   Printer,
   MessageSquare,
-  Smartphone
+  Smartphone,
+  Bell
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -118,9 +120,130 @@ export default function DoctorDashboard() {
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
+  // Real-Time Patient Chat Notifications State
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const [showNotificationsDropdown, setShowNotificationsDropdown] = useState<boolean>(false);
+  const [incomingToast, setIncomingToast] = useState<any | null>(null);
+  const [unreadPatientsMap, setUnreadPatientsMap] = useState<Record<string, number>>({});
+
   useEffect(() => {
     fetchDoctorData();
   }, [user]);
+
+  // Background WebSocket listener & notification sync for real-time doctor alerts
+  useEffect(() => {
+    if (!user) return;
+    fetchNotifications();
+
+    const socket: Socket = io(WS_URL, {
+      transports: ['websocket', 'polling']
+    });
+
+    socket.on('connect', () => {
+      socket.emit('register-user', {
+        userId: user.id,
+        role: user.role
+      });
+      socket.emit('join-room', {
+        consultationId: `doctor-${user.id}`,
+        userId: user.id,
+        role: user.role
+      });
+    });
+
+    socket.on('clinical-notification', (notif: any) => {
+      setNotifications(prev => [notif, ...prev]);
+      if (notif.patientId) {
+        setUnreadPatientsMap(prev => ({
+          ...prev,
+          [notif.patientId]: (prev[notif.patientId] || 0) + 1
+        }));
+      }
+      setIncomingToast(notif);
+
+      // Gentle auditory notification chime
+      try {
+        const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.frequency.setValueAtTime(587.33, audioCtx.currentTime);
+        osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.12, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.35);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.35);
+      } catch (e) {
+        // audio policy suppressed if page hasn't had user gesture yet
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, [user]);
+
+  const fetchNotifications = async () => {
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/chat/notifications`, { headers });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setNotifications(data);
+          const map: Record<string, number> = {};
+          data.filter((n: any) => !n.read).forEach((n: any) => {
+            if (n.patientId) map[n.patientId] = (map[n.patientId] || 0) + 1;
+          });
+          setUnreadPatientsMap(map);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch clinical notifications', e);
+    }
+  };
+
+  const handleOpenPatientChatFromNotification = async (notif: any) => {
+    try {
+      const headers = getAuthHeaders();
+      await fetch(`${API_BASE}/chat/notifications/${notif.id}/read`, {
+        method: 'PUT',
+        headers
+      });
+      setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+      if (notif.patientId) {
+        setUnreadPatientsMap(prev => {
+          const updated = { ...prev };
+          delete updated[notif.patientId];
+          return updated;
+        });
+      }
+    } catch (e) {
+      console.warn(e);
+    }
+
+    if (notif.patientId) {
+      setSelectedPatientId(notif.patientId);
+    }
+    setShowChatDrawer(true);
+    setShowNotificationsDropdown(false);
+    setIncomingToast(null);
+  };
+
+  const handleMarkAllNotificationsRead = async () => {
+    try {
+      const headers = getAuthHeaders();
+      await fetch(`${API_BASE}/chat/notifications/read-all`, {
+        method: 'PUT',
+        headers
+      });
+      setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      setUnreadPatientsMap({});
+    } catch (e) {
+      console.warn(e);
+    }
+  };
 
   const fetchDoctorData = async () => {
     setLoading(true);
@@ -448,6 +571,86 @@ export default function DoctorDashboard() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
+            {/* Real-Time Clinical Notifications Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+                className="relative px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+                title="Clinical Message Alerts"
+              >
+                <Bell className="w-4 h-4 text-amber-400" />
+                <span>Alerts</span>
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="w-5 h-5 bg-rose-500 text-white rounded-full text-[10px] font-black flex items-center justify-center animate-pulse shadow-md ml-1">
+                    {notifications.filter(n => !n.read).length}
+                  </span>
+                )}
+              </button>
+
+              {/* Notification Popover Dropdown */}
+              {showNotificationsDropdown && (
+                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
+                  <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <Bell className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-white uppercase tracking-wider">Clinical Alerts</span>
+                      {notifications.filter(n => !n.read).length > 0 && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                          {notifications.filter(n => !n.read).length} new
+                        </span>
+                      )}
+                    </div>
+                    {notifications.some(n => !n.read) && (
+                      <button
+                        onClick={handleMarkAllNotificationsRead}
+                        className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
+                      >
+                        Mark all read
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
+                    {notifications.length === 0 ? (
+                      <div className="p-6 text-center text-xs text-slate-400">
+                        No clinical messages yet. Alerts will appear here in real time.
+                      </div>
+                    ) : (
+                      notifications.map(notif => (
+                        <div
+                          key={notif.id}
+                          onClick={() => handleOpenPatientChatFromNotification(notif)}
+                          className={`p-3.5 hover:bg-slate-800/80 cursor-pointer transition flex items-start space-x-3 ${
+                            !notif.read ? 'bg-blue-950/30 border-l-2 border-cyan-400' : ''
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+                            <MessageSquare className="w-4 h-4" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between">
+                              <p className="text-xs font-bold text-white truncate">
+                                {notif.patientName}
+                              </p>
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                {notif.timestamp}
+                              </span>
+                            </div>
+                            <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">
+                              {notif.text}
+                            </p>
+                            <span className="inline-block mt-1 text-[10px] font-semibold text-cyan-400 hover:underline">
+                              Open Chat & Chart →
+                            </span>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+
             <button
               onClick={() => setShowChatDrawer(true)}
               className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
@@ -521,7 +724,7 @@ export default function DoctorDashboard() {
                   ) : (
                     filteredPatients.map(p => (
                       <option key={p.id} value={p.id}>
-                        {p.firstName} {p.lastName} • {p.email}
+                        {p.firstName} {p.lastName} • {p.email} {unreadPatientsMap[p.id] ? `(💬 ${unreadPatientsMap[p.id]} new)` : ''}
                       </option>
                     ))
                   )}
@@ -704,6 +907,12 @@ export default function DoctorDashboard() {
                             <div className="font-bold flex items-center space-x-1.5">
                               <span>{p.firstName} {p.lastName}</span>
                               {isSelected && <Check className="w-3.5 h-3.5 text-blue-400" />}
+                              {unreadPatientsMap[p.id] > 0 && (
+                                <span className="px-1.5 py-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white animate-pulse flex items-center space-x-1">
+                                  <MessageSquare className="w-2.5 h-2.5" />
+                                  <span>{unreadPatientsMap[p.id]} new</span>
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-slate-400 truncate max-w-[180px]">{p.email}</div>
                             <div className="text-[9px] text-slate-500 font-mono">MRN: #{p.id.substring(0, 8)}</div>
@@ -733,6 +942,13 @@ export default function DoctorDashboard() {
                           <p className="text-xs text-slate-400">Account Verified • Registered on {new Date(activePatient.createdAt).toLocaleDateString()}</p>
                         </div>
                         <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => setShowChatDrawer(true)}
+                            className="px-3.5 py-2 rounded-xl bg-cyan-600/20 hover:bg-cyan-600 text-cyan-300 hover:text-white border border-cyan-500/30 text-xs font-bold transition flex items-center space-x-1.5"
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span>Care Chat {unreadPatientsMap[activePatient.id] ? `(${unreadPatientsMap[activePatient.id]} new)` : ''}</span>
+                          </button>
                           <button
                             onClick={() => setShowScheduleModal(true)}
                             className="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center space-x-1.5"
@@ -1519,6 +1735,48 @@ export default function DoctorDashboard() {
         isOpen={show2FAModal}
         onClose={() => setShow2FAModal(false)}
       />
+
+      {/* Real-Time Incoming Patient Message Toast Alert */}
+      {incomingToast && (
+        <div className="fixed top-20 right-4 sm:right-8 z-50 max-w-sm w-full bg-slate-900 border-2 border-cyan-500 rounded-2xl p-4 shadow-2xl animate-bounce-short backdrop-blur-md flex items-start space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 flex-shrink-0">
+            <MessageSquare className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-black uppercase tracking-wider text-cyan-400">
+                New Clinical Message
+              </span>
+              <button
+                onClick={() => setIncomingToast(null)}
+                className="text-slate-400 hover:text-white"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <h4 className="text-xs font-bold text-white truncate mt-0.5">
+              From: {incomingToast.patientName}
+            </h4>
+            <p className="text-xs text-slate-300 line-clamp-2 mt-1 bg-slate-950/60 p-2 rounded-lg border border-slate-800">
+              "{incomingToast.text}"
+            </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <button
+                onClick={() => handleOpenPatientChatFromNotification(incomingToast)}
+                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-xs shadow-md transition"
+              >
+                View & Reply Now
+              </button>
+              <button
+                onClick={() => setIncomingToast(null)}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Real-Time Encrypted Clinical Care Chat Drawer */}
       <ClinicalChatDrawer

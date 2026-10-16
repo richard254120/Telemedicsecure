@@ -8,9 +8,33 @@ export const setupSignaling = (io: Server) => {
     // In a real app, authenticate socket via middleware using JWT
     console.log(`Socket connected: ${socket.id}`);
 
+    // Direct user socket registration for real-time notifications & targeted alerts
+    socket.on('register-user', (data: { userId?: string, role?: string }) => {
+      const { userId, role } = data || {};
+      if (userId) {
+        socket.join(`user-${userId}`);
+        if (role === 'DOCTOR') {
+          socket.join(`doctor-${userId}`);
+        }
+        console.log(`Socket ${socket.id} registered for user-${userId} (${role})`);
+      }
+      if (role) {
+        socket.join(`role-${role}`);
+      }
+    });
+
     socket.on('join-room', async (data: { consultationId: string, userId: string, role: string }) => {
       const { consultationId, userId, role } = data;
       socket.join(consultationId);
+      if (userId) {
+        socket.join(`user-${userId}`);
+        if (role === 'DOCTOR') {
+          socket.join(`doctor-${userId}`);
+        }
+      }
+      if (role) {
+        socket.join(`role-${role}`);
+      }
       socket.to(consultationId).emit('user-joined', { userId, role });
       console.log(`User ${userId} joined ${consultationId}`);
     });
