@@ -571,6 +571,81 @@ router.post('/:id/revoke', requireRole([Role.DOCTOR]), async (req: Request, res:
 });
 
 // ==========================================
+// 7.4. UPDATE PRESCRIPTION STATUS (DISPENSE / REVOKE)
+// ==========================================
+router.put('/:id/status', async (req: Request, res: Response) => {
+  try {
+    const prescriptionId = String(req.params.id);
+    const user = (req as any).user;
+    const { status, statusReason } = req.body;
+
+    if (!status || !['ISSUED', 'DISPENSED', 'REVOKED'].includes(status)) {
+      return res.status(400).json({ error: 'Valid status (ISSUED, DISPENSED, REVOKED) is required' });
+    }
+
+    const prescription = await prisma.prescription.findUnique({
+      where: { id: prescriptionId },
+      include: {
+        items: true,
+        signature: true,
+        doctor: true,
+        consultation: { include: { patient: true } }
+      }
+    });
+
+    if (!prescription) {
+      return res.status(404).json({ error: 'Prescription not found' });
+    }
+
+    // Role-based permissions
+    if (status === 'DISPENSED') {
+      const allowedRoles = [Role.PHARMACIST, Role.DOCTOR, Role.ADMIN];
+      if (!allowedRoles.includes(user.role)) {
+        return res.status(403).json({ error: 'Only a licensed Pharmacist, Doctor, or Admin can dispense prescriptions' });
+      }
+    } else if (status === 'REVOKED') {
+      if (user.role === Role.DOCTOR && prescription.doctorId !== user.id) {
+        return res.status(403).json({ error: 'You can only revoke prescriptions you issued' });
+      }
+      if (user.role !== Role.DOCTOR && user.role !== Role.ADMIN) {
+        return res.status(403).json({ error: 'Only the prescribing Doctor or Admin can revoke prescriptions' });
+      }
+    }
+
+    const updated = await prisma.prescription.update({
+      where: { id: prescriptionId },
+      data: {
+        status: status as PrescriptionStatus,
+        statusReason: statusReason || null
+      },
+      include: {
+        items: true,
+        signature: true,
+        doctor: true,
+        consultation: { include: { patient: true } }
+      }
+    });
+
+    // Hash-chained audit event
+    await createChainedAuditEvent({
+      action: status === 'DISPENSED' ? 'DISPENSE_PRESCRIPTION' : `PRESCRIPTION_STATUS_${status}`,
+      resource: `Prescription:${prescriptionId}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown',
+      userAgent: (req.headers['user-agent'] as string) || 'unknown'
+    });
+
+    res.json({
+      message: `Prescription status successfully updated to ${status}`,
+      prescription: updated
+    });
+  } catch (err: any) {
+    console.error('Update prescription status error:', err);
+    res.status(500).json({ error: 'Failed to update prescription status', details: err.message });
+  }
+});
+
+// ==========================================
 // 7.5. EDIT / UPDATE PRESCRIPTION (Detects modification after signing)
 // ==========================================
 router.put('/:id', async (req: Request, res: Response) => {
