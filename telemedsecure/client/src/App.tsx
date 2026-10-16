@@ -23,6 +23,7 @@ import PatientDashboard from './pages/dashboards/PatientDashboard';
 import DoctorDashboard from './pages/dashboards/DoctorDashboard';
 import NurseDashboard from './pages/dashboards/NurseDashboard';
 import AdminDashboard from './pages/dashboards/AdminDashboard';
+import StaffStationDashboard from './pages/dashboards/StaffStationDashboard';
 
 import {
   Video,
@@ -122,6 +123,64 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={['ADMIN']}>
                     <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Clinical Hospital Roles Dashboards */}
+              <Route
+                path="/pharmacist"
+                element={
+                  <ProtectedRoute allowedRoles={['PHARMACIST', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="PHARMACIST" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/lab_technician"
+                element={
+                  <ProtectedRoute allowedRoles={['LAB_TECHNICIAN', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="LAB_TECHNICIAN" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/radiologist"
+                element={
+                  <ProtectedRoute allowedRoles={['RADIOLOGIST', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="RADIOLOGIST" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/billing_officer"
+                element={
+                  <ProtectedRoute allowedRoles={['BILLING_OFFICER', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="BILLING_OFFICER" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/triage_officer"
+                element={
+                  <ProtectedRoute allowedRoles={['TRIAGE_OFFICER', 'NURSE', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="TRIAGE_OFFICER" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/care_coordinator"
+                element={
+                  <ProtectedRoute allowedRoles={['CARE_COORDINATOR', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="CARE_COORDINATOR" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/receptionist"
+                element={
+                  <ProtectedRoute allowedRoles={['RECEPTIONIST', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="RECEPTIONIST" />
                   </ProtectedRoute>
                 }
               />

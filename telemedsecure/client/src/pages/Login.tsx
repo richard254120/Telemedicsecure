@@ -20,10 +20,11 @@ import {
   Ticket,
   UserPlus,
   ArrowRight,
-  Shield
+  Shield,
+  Pill
 } from 'lucide-react';
 
-export type LoginSection = 'PATIENT' | 'DOCTOR' | 'NURSE' | 'ADMIN' | 'INVITATION';
+export type LoginSection = 'PATIENT' | 'DOCTOR' | 'NURSE' | 'STAFF' | 'ADMIN' | 'INVITATION';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -286,6 +287,18 @@ export default function Login() {
           emailPlaceholder: 'nurse.practitioner@telemed.com',
           buttonText: 'Sign In to Nursing Station'
         };
+      case 'STAFF':
+        return {
+          title: 'Allied Healthcare & Clinical Stations',
+          subtitle: 'Pharmacists, Lab Scientists, Radiologists, Billing & Triage Officers',
+          badge: 'ALLIED HEALTH STATIONS',
+          badgeColor: 'bg-teal-500/20 text-teal-300 border-teal-500/30',
+          gradient: 'from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 shadow-teal-600/25',
+          borderActive: 'border-teal-500/50',
+          notice: 'Hospital clinical accounts are provisioned by Administration. Sign in with your assigned credentials to access your designated department station.',
+          emailPlaceholder: 'pharmacist@telemed.com',
+          buttonText: 'Sign In to Clinical Station'
+        };
       case 'ADMIN':
         return {
           title: 'Hospital Admin & Forensics',
@@ -352,7 +365,7 @@ export default function Login() {
 
       <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-xl relative z-10 space-y-4">
         {/* Navigation Sections Bar */}
-        <div className="bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-xl grid grid-cols-2 sm:grid-cols-5 gap-1">
+        <div className="bg-slate-900/90 p-1.5 rounded-2xl border border-slate-800 shadow-xl grid grid-cols-3 sm:grid-cols-6 gap-1">
           {/* 1. Doctor */}
           <button
             type="button"
@@ -383,7 +396,22 @@ export default function Login() {
             <span className="text-[11px]">Nurse</span>
           </button>
 
-          {/* 3. Admin */}
+          {/* 3. Clinical Staff */}
+          <button
+            type="button"
+            id="nav-section-staff"
+            onClick={() => handleSectionSelect('STAFF')}
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
+              activeSection === 'STAFF'
+                ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
+                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+            }`}
+          >
+            <Pill className="w-4 h-4" />
+            <span className="text-[11px]">Stations</span>
+          </button>
+
+          {/* 4. Admin */}
           <button
             type="button"
             id="nav-section-admin"
@@ -398,7 +426,7 @@ export default function Login() {
             <span className="text-[11px]">Admin</span>
           </button>
 
-          {/* 4. Patient */}
+          {/* 5. Patient */}
           <button
             type="button"
             id="nav-section-patient"
@@ -413,12 +441,12 @@ export default function Login() {
             <span className="text-[11px]">Patient</span>
           </button>
 
-          {/* 5. Accept Invite */}
+          {/* 6. Accept Invite */}
           <button
             type="button"
             id="nav-section-invitation"
             onClick={() => handleSectionSelect('INVITATION')}
-            className={`col-span-2 sm:col-span-1 py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 relative ${
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 relative ${
               activeSection === 'INVITATION'
                 ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
@@ -448,6 +476,7 @@ export default function Login() {
               <div className="p-2.5 rounded-2xl bg-slate-800/60 border border-slate-700/60 text-slate-300">
                 {activeSection === 'DOCTOR' && <Stethoscope className="w-5 h-5 text-blue-400" />}
                 {activeSection === 'NURSE' && <HeartPulse className="w-5 h-5 text-emerald-400" />}
+                {activeSection === 'STAFF' && <Pill className="w-5 h-5 text-teal-400" />}
                 {activeSection === 'ADMIN' && <ShieldAlert className="w-5 h-5 text-purple-400" />}
                 {activeSection === 'PATIENT' && <User className="w-5 h-5 text-cyan-400" />}
                 {activeSection === 'INVITATION' && <Ticket className="w-5 h-5 text-amber-400" />}

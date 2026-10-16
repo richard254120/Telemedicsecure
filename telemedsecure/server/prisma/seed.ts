@@ -136,7 +136,48 @@ async function main() {
     });
   }
 
-  console.log('Seeding completed successfully with Argon2 verified credentials!');
+  // Seed Allied Healthcare & Clinical Stations Staff
+  const clinicalStaff = [
+    { email: 'pharmacist@telemed.com', role: Role.PHARMACIST, firstName: 'Marcus', lastName: 'Vance', license: 'RPH-99214', spec: 'Clinical Pharmacy' },
+    { email: 'lab@telemed.com', role: Role.LAB_TECHNICIAN, firstName: 'Clara', lastName: 'Oswald', license: 'MLT-55201', spec: 'Biochemical Pathology' },
+    { email: 'radiology@telemed.com', role: Role.RADIOLOGIST, firstName: 'David', lastName: 'Tennant', license: 'RAD-77109', spec: 'Teleradiology' },
+    { email: 'billing@telemed.com', role: Role.BILLING_OFFICER, firstName: 'Robert', lastName: 'Sterling', license: 'CPB-33412', spec: 'Medical Billing & Coding' },
+    { email: 'triage@telemed.com', role: Role.TRIAGE_OFFICER, firstName: 'Amy', lastName: 'Pond', license: 'EMT-88301', spec: 'Emergency Triage' },
+    { email: 'care@telemed.com', role: Role.CARE_COORDINATOR, firstName: 'Rory', lastName: 'Williams', license: 'CCM-22190', spec: 'Chronic Care & Case Management' },
+    { email: 'reception@telemed.com', role: Role.RECEPTIONIST, firstName: 'Donna', lastName: 'Noble', license: 'PAS-11045', spec: 'Patient Access & Scheduling' }
+  ];
+
+  for (const s of clinicalStaff) {
+    await prisma.user.upsert({
+      where: { email: s.email },
+      update: {
+        passwordHash,
+        role: s.role,
+        isActive: true,
+        failedAttempts: 0,
+        lockedUntil: null,
+        verificationStatus: VerificationStatus.VERIFIED,
+        medicalLicenseNo: s.license,
+        licenseJurisdiction: 'US-CLINICAL',
+        specialty: s.spec
+      },
+      create: {
+        email: s.email,
+        passwordHash,
+        role: s.role,
+        firstName: s.firstName,
+        lastName: s.lastName,
+        isActive: true,
+        verificationStatus: VerificationStatus.VERIFIED,
+        medicalLicenseNo: s.license,
+        licenseJurisdiction: 'US-CLINICAL',
+        specialty: s.spec,
+        verifiedAt: new Date()
+      }
+    });
+  }
+
+  console.log('Seeding completed successfully with Argon2 verified credentials for all clinical hospital roles!');
 }
 
 main()
