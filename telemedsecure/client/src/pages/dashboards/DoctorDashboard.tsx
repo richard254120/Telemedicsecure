@@ -1524,7 +1524,8 @@ export default function DoctorDashboard() {
       <ClinicalChatDrawer
         isOpen={showChatDrawer}
         onClose={() => setShowChatDrawer(false)}
-        recipientName={activePatient ? `${activePatient.firstName} ${activePatient.lastName}` : "Patient Consultation"}
+        consultationId={`care-team-patient-${activePatient ? activePatient.id : (patients[0]?.id || 'general-clinical-channel')}`}
+        recipientName={activePatient ? `${activePatient.firstName} ${activePatient.lastName} (Patient)` : "Attending Care Team Channel"}
         recipientRole="PATIENT"
       />
 

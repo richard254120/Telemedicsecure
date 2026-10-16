@@ -20,9 +20,11 @@ import {
   KeyRound,
   Zap,
   Send,
-  AlertCircle
+  AlertCircle,
+  MessageSquare
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
+import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
@@ -33,6 +35,7 @@ export default function NurseDashboard() {
   const [consultations, setConsultations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [show2FAModal, setShow2FAModal] = useState(false);
+  const [showChatDrawer, setShowChatDrawer] = useState(false);
 
   // Vitals form state
   const [selectedConsultationId, setSelectedConsultationId] = useState<string>('');
@@ -229,6 +232,13 @@ export default function NurseDashboard() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowChatDrawer(true)}
+              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              <span>Care Chat</span>
+            </button>
             <button
               onClick={() => setShow2FAModal(true)}
               className="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
@@ -592,6 +602,15 @@ export default function NurseDashboard() {
       <TwoFactorSetupModal
         isOpen={show2FAModal}
         onClose={() => setShow2FAModal(false)}
+      />
+
+      {/* Real-Time Encrypted Clinical Care Chat Drawer */}
+      <ClinicalChatDrawer
+        isOpen={showChatDrawer}
+        onClose={() => setShowChatDrawer(false)}
+        consultationId={selectedConsultationId ? `care-team-patient-${consultations.find(c => c.id === selectedConsultationId)?.patientId || 'channel'}` : 'general-clinical-channel'}
+        recipientName="Attending Care Team & Triage"
+        recipientRole="NURSE"
       />
     </div>
   );

@@ -27,9 +27,11 @@ import {
   FileCheck,
   Lock,
   Printer,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
+import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 
 interface StaffStationDashboardProps {
   stationRole: UserRole;
@@ -43,6 +45,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [show2FAModal, setShow2FAModal] = useState<boolean>(false);
+  const [showChatDrawer, setShowChatDrawer] = useState<boolean>(false);
 
   // Data states
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
@@ -468,6 +471,13 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
               title="Refresh Station Data"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => setShowChatDrawer(true)}
+              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-cyan-300 font-semibold text-xs transition flex items-center space-x-1.5"
+            >
+              <MessageSquare className="w-4 h-4 text-cyan-400" />
+              <span>Care Chat</span>
             </button>
             <button
               onClick={() => setShow2FAModal(true)}
@@ -1198,6 +1208,15 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
         <TwoFactorSetupModal
           isOpen={show2FAModal}
           onClose={() => setShow2FAModal(false)}
+        />
+
+        {/* Real-Time Encrypted Clinical Care Chat Drawer */}
+        <ClinicalChatDrawer
+          isOpen={showChatDrawer}
+          onClose={() => setShowChatDrawer(false)}
+          consultationId="general-clinical-channel"
+          recipientName={`Attending Care Team (${stationRole})`}
+          recipientRole={stationRole}
         />
       </div>
     </div>

@@ -650,8 +650,9 @@ export default function PatientDashboard() {
       <ClinicalChatDrawer
         isOpen={showChatDrawer}
         onClose={() => setShowChatDrawer(false)}
-        recipientName="Attending Care Team"
-        recipientRole="DOCTOR"
+        consultationId={`care-team-patient-${user?.id || 'default'}`}
+        recipientName="Attending Care Team (Dr. Mitchell & Clinical Staff)"
+        recipientRole="CARE_TEAM"
       />
 
       {/* Patient Appointment Booking & Clinical Intake Modal */}
