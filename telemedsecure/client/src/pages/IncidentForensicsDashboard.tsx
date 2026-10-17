@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
 import {
   FileSearch,
   ShieldAlert,
@@ -59,12 +60,13 @@ interface Incident {
 
 export default function IncidentForensicsDashboard() {
   const navigate = useNavigate();
-  const [incidents, setIncidents] = useState<Incident[]>([]);
-  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
-  const [loading, setLoading] = useState(false);
+  const { getAuthHeaders } = useAuth();
 
-  // New Incident Modal / Form
-  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [incidents, setIncidents] = useState<Incident[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedIncident, setSelectedIncident] = useState<Incident | null>(null);
+
+  // New Incident Form
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
   const [newSeverity, setNewSeverity] = useState<'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL'>('HIGH');
@@ -87,14 +89,10 @@ export default function IncidentForensicsDashboard() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportResult, setReportResult] = useState<any>(null);
 
-  const token = localStorage.getItem('token') || '';
-
   const fetchIncidents = async () => {
     setLoading(true);
     try {
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
+      const headers = getAuthHeaders();
       const res = await fetch(`${API_BASE}/investigation/incidents`, { headers });
       const data = await res.json();
       if (Array.isArray(data)) {
@@ -118,11 +116,9 @@ export default function IncidentForensicsDashboard() {
   }, []);
 
   const handleCreateIncident = async () => {
-    if (!newTitle) return;
+    if (!newTitle.trim()) return;
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
+      const headers = getAuthHeaders();
       const res = await fetch(`${API_BASE}/investigation/incidents`, {
         method: 'POST',
         headers,
@@ -151,9 +147,7 @@ export default function IncidentForensicsDashboard() {
     if (!selectedIncident) return;
     setReconstructing(true);
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
+      const headers = getAuthHeaders();
       await fetch(`${API_BASE}/investigation/incidents/${selectedIncident.id}/reconstruct`, {
         method: 'POST',
         headers,
@@ -173,12 +167,10 @@ export default function IncidentForensicsDashboard() {
   };
 
   const handleAttachEvidence = async () => {
-    if (!selectedIncident || !evidenceDesc) return;
+    if (!selectedIncident || !evidenceDesc.trim()) return;
     setAttachingEvidence(true);
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
+      const headers = getAuthHeaders();
       await fetch(`${API_BASE}/investigation/incidents/${selectedIncident.id}/evidence`, {
         method: 'POST',
         headers,
@@ -202,9 +194,7 @@ export default function IncidentForensicsDashboard() {
     setGeneratingReport(true);
     setReportResult(null);
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
+      const headers = getAuthHeaders();
       const res = await fetch(`${API_BASE}/investigation/incidents/${selectedIncident.id}/report`, {
         method: 'POST',
         headers,
@@ -291,28 +281,25 @@ export default function IncidentForensicsDashboard() {
                     <div
                       key={inc.id}
                       onClick={() => setSelectedIncident(inc)}
-                      className={`p-4 rounded-2xl border cursor-pointer transition space-y-2 ${
-                        isSelected
-                          ? 'bg-indigo-950/30 border-indigo-500/60 shadow-lg shadow-indigo-950/40'
-                          : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
-                      }`}
+                      className={`p-4 rounded-2xl border cursor-pointer transition space-y-2 ${isSelected
+                        ? 'bg-indigo-950/30 border-indigo-500/60 shadow-lg shadow-indigo-950/40'
+                        : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                            inc.severity === 'CRITICAL'
-                              ? 'bg-red-500/20 text-red-400 border border-red-500/30'
-                              : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                          }`}
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${inc.severity === 'CRITICAL'
+                            ? 'bg-red-500/20 text-red-400 border border-red-500/30'
+                            : 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                            }`}
                         >
                           {inc.severity}
                         </span>
                         <span
-                          className={`text-[10px] font-mono px-2 py-0.5 rounded ${
-                            inc.status === 'CLOSED'
-                              ? 'text-emerald-400 bg-emerald-500/10'
-                              : 'text-amber-400 bg-amber-500/10'
-                          }`}
+                          className={`text-[10px] font-mono px-2 py-0.5 rounded ${inc.status === 'CLOSED'
+                            ? 'text-emerald-400 bg-emerald-500/10'
+                            : 'text-amber-400 bg-amber-500/10'
+                            }`}
                         >
                           {inc.status}
                         </span>
