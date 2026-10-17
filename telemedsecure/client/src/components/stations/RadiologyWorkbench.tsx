@@ -65,7 +65,6 @@ export default function RadiologyWorkbench() {
       if (ptsRes.ok) {
         const pData = await ptsRes.json();
         setPatients(Array.isArray(pData) ? pData : []);
-        if (pData.length > 0 && !newPatientId) setNewPatientId(pData[0].id);
       }
     } catch (err: any) {
       console.error('Error fetching radiology data', err);
@@ -380,6 +379,7 @@ export default function RadiologyWorkbench() {
                   className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-purple-500"
                   required
                 >
+                  <option value="" disabled hidden>Select a patient</option>
                   {patients.map(p => (
                     <option key={p.id} value={p.id}>
                       {p.firstName} {p.lastName} ({p.email})

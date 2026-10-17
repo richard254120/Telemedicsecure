@@ -35,7 +35,7 @@ router.get('/', async (req, res) => {
 });
 
 // Patients directory for clinical staff and administration (Doctor, Nurse, Admin, Receptionist, Care Coordinator, Triage)
-router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.RECEPTIONIST, Role.CARE_COORDINATOR, Role.TRIAGE_OFFICER]), async (req, res) => {
+router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.RECEPTIONIST, Role.CARE_COORDINATOR, Role.TRIAGE_OFFICER, Role.RADIOLOGIST, Role.LAB_TECHNICIAN, Role.PHARMACIST, Role.BILLING_OFFICER]), async (req, res) => {
   try {
     const patients = await prisma.user.findMany({
       where: { role: Role.PATIENT },
