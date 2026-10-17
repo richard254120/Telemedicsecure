@@ -67,7 +67,22 @@ export default function Login() {
     setInviteLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${API_BASE}/auth/invitations/${encodeURIComponent(token.trim())}`);
+      // Extract raw token if the user supplied a full URL (e.g., copied the invitation link)
+  const extractToken = (input: string): string => {
+    try {
+      const url = new URL(input);
+      // If URL contains an `invite` query param, use that as the token
+      if (url.searchParams.has('invite')) {
+        return url.searchParams.get('invite') ?? input;
+      }
+    } catch {
+      // Not a URL, fall back to raw input
+    }
+    return input;
+  };
+
+  const rawToken = extractToken(token.trim());
+  const res = await fetch(`${API_BASE}/auth/invitations/${encodeURIComponent(rawToken)}`);
       const data = await res.json();
       if (res.ok && data.valid) {
         setInviteData(data);
