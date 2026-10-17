@@ -97,6 +97,14 @@ model User {
   invoices             Invoice[]
   claims               InsuranceClaim[]
   eligibilities        InsuranceEligibility[]
+  labOrdersPatient     LabOrder[]             @relation("PatientLabOrders")
+  labOrdersTechnician  LabOrder[]             @relation("TechnicianLabOrders")
+  radiologyStudiesPatient RadiologyStudy[]    @relation("PatientRadiologyStudies")
+  radiologyStudiesDoctor RadiologyStudy[]     @relation("RadiologistStudies")
+  triageAssessmentsPatient TriageAssessment[]  @relation("PatientTriageAssessments")
+  triageAssessmentsOfficer TriageAssessment[]  @relation("OfficerTriageAssessments")
+  carePlansPatient     CarePlan[]             @relation("PatientCarePlans")
+  carePlansCoordinator CarePlan[]             @relation("CoordinatorCarePlans")
 }
 
 model StaffInvitation {
@@ -139,6 +147,9 @@ model Consultation {
   prescriptions Prescription[]
   vitalSigns    VitalSign[]
   invoices      Invoice[]
+  labOrders     LabOrder[]
+  radiologyStudies RadiologyStudy[]
+  triageAssessments TriageAssessment[]
 }
 
 model MedicalRecord {
@@ -495,4 +506,158 @@ model InsuranceEligibility {
 
   patient             User     @relation(fields: [patientId], references: [id])
 }
+
+enum LabOrderStatus {
+  ORDERED
+  SAMPLE_COLLECTED
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+model LabOrder {
+  id                String         @id @default(uuid())
+  orderNumber       String         @unique
+  patientId         String
+  consultationId    String?
+  technicianId      String?
+  testName          String
+  specimenType      String
+  status            LabOrderStatus @default(ORDERED)
+  findings          String?
+  referenceRange    String?
+  isCritical        Boolean        @default(false)
+  criticalNotes     String?
+  sampleCollectedAt DateTime?
+  completedAt       DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  patient           User           @relation("PatientLabOrders", fields: [patientId], references: [id])
+  technician        User?          @relation("TechnicianLabOrders", fields: [technicianId], references: [id])
+  consultation      Consultation?  @relation(fields: [consultationId], references: [id])
+}
+
+enum RadiologyStatus {
+  ORDERED
+  IN_REVIEW
+  FINALIZED
+  URGENT_FLAGGED
+}
+
+model RadiologyStudy {
+  id               String          @id @default(uuid())
+  studyNumber      String          @unique
+  patientId        String
+  consultationId   String?
+  radiologistId    String?
+  modality         String
+  anatomicalRegion String
+  dicomStudyUid    String          @unique
+  status           RadiologyStatus @default(ORDERED)
+  impression       String?
+  findings         String?
+  isUrgent         Boolean         @default(false)
+  urgentAlertSent  Boolean         @default(false)
+  orderedAt        DateTime        @default(now())
+  finalizedAt      DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  patient          User            @relation("PatientRadiologyStudies", fields: [patientId], references: [id])
+  radiologist      User?           @relation("RadiologistStudies", fields: [radiologistId], references: [id])
+  consultation     Consultation?   @relation(fields: [consultationId], references: [id])
+}
+
+enum TriageStatus {
+  WAITING
+  IN_TRIAGE
+  TRIAGED
+  FAST_TRACKED
+  SEEN
+}
+
+model TriageAssessment {
+  id              String       @id @default(uuid())
+  triageNumber    String       @unique
+  patientId       String
+  consultationId  String?
+  officerId       String?
+  esiScore        Int          // 1 (Immediate) to 5 (Non-urgent)
+  chiefComplaint  String
+  heartRate       Int?
+  bloodPressure   String?
+  respiratoryRate Int?
+  temperature     Float?
+  oxygenSat       Float?
+  acuityNotes     String?
+  assignedQueue   String       @default("General Clinical Queue")
+  status          TriageStatus @default(WAITING)
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  patient         User         @relation("PatientTriageAssessments", fields: [patientId], references: [id])
+  officer         User?        @relation("OfficerTriageAssessments", fields: [officerId], references: [id])
+  consultation    Consultation? @relation(fields: [consultationId], references: [id])
+}
+
+enum CarePlanStatus {
+  ACTIVE
+  ON_TRACK
+  NEEDS_ATTENTION
+  COMPLETED
+  DISCHARGED
+}
+
+model CarePlan {
+  id               String         @id @default(uuid())
+  planNumber       String         @unique
+  patientId        String
+  coordinatorId    String?
+  cohort           String         // e.g. "DIABETES_T2", "HYPERTENSION", "COPD", "POST_OP_CARDIO"
+  diagnosisTitle   String
+  goals            String
+  adherencePercent Float          @default(85.0)
+  riskLevel        String         @default("MEDIUM")
+  status           CarePlanStatus @default(ACTIVE)
+  nextReviewDate   DateTime
+  lastContactedAt  DateTime       @default(now())
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  patient          User           @relation("PatientCarePlans", fields: [patientId], references: [id])
+  coordinator      User?          @relation("CoordinatorCarePlans", fields: [coordinatorId], references: [id])
+  tasks            CareTask[]
+}
+
+model CareTask {
+  id          String   @id @default(uuid())
+  carePlanId  String
+  title       String
+  description String?
+  dueDate     DateTime
+  isCompleted Boolean  @default(false)
+  completedAt DateTime?
+  createdAt   DateTime @default(now())
+
+  carePlan    CarePlan @relation(fields: [carePlanId], references: [id], onDelete: Cascade)
+}
+
+model MedicationInventory {
+  id             String   @id @default(uuid())
+  ndc            String   @unique
+  name           String
+  genericName    String?
+  dosageForm     String
+  strength       String
+  stockQuantity  Int      @default(100)
+  reorderLevel   Int      @default(20)
+  unitPrice      Float    @default(12.50)
+  manufacturer   String?
+  expiryDate     DateTime
+  isRestricted   Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 

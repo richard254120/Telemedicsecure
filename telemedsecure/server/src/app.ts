@@ -16,6 +16,7 @@ import investigationRoutes from './routes/investigation.routes';
 import smsRoutes from './routes/sms.routes';
 import chatRoutes from './routes/chat.routes';
 import billingRoutes from './routes/billing.routes';
+import stationRoutes from './routes/station.routes';
 
 const app = express();
 
@@ -294,6 +295,7 @@ app.use('/api/sms', smsRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/v1/billing', billingRoutes);
+app.use('/api/v1/stations', stationRoutes);
 
 // Fallback for unmatched routes
 app.use((req, res, next) => {

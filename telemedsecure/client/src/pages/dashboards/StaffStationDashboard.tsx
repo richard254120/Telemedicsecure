@@ -33,6 +33,12 @@ import {
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import BillingOfficerWorkbench from '../../components/BillingOfficerWorkbench';
+import LabStationWorkbench from '../../components/stations/LabStationWorkbench';
+import RadiologyWorkbench from '../../components/stations/RadiologyWorkbench';
+import PharmacyWorkbench from '../../components/stations/PharmacyWorkbench';
+import TriageWorkbench from '../../components/stations/TriageWorkbench';
+import CareCoordinatorWorkbench from '../../components/stations/CareCoordinatorWorkbench';
+
 
 interface StaffStationDashboardProps {
   stationRole: UserRole;
@@ -53,29 +59,6 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   const [consultations, setConsultations] = useState<any[]>([]);
   const [usersList, setUsersList] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState<string>('');
-
-  // Interactive Form States
-  // 1. Lab Tech State
-  const [labSpecimenType, setLabSpecimenType] = useState('Venous Blood (EDTA)');
-  const [labTestType, setLabTestType] = useState('Complete Blood Count (CBC)');
-  const [labValueResult, setLabValueResult] = useState('WBC: 6.8 x10^9/L, Hb: 14.2 g/dL, Platelets: 240 x10^9/L (Normal)');
-  const [selectedLabPatient, setSelectedLabPatient] = useState<string>('');
-
-  // 2. Radiologist State
-  const [imagingType, setImagingType] = useState('Chest X-Ray (PA & Lateral)');
-  const [imagingImpression, setImagingImpression] = useState('Clear lung fields. No focal consolidation, pneumothorax, or acute bony abnormalities.');
-  const [isUrgentFinding, setIsUrgentFinding] = useState<boolean>(false);
-  const [selectedRadioPatient, setSelectedRadioPatient] = useState<string>('');
-
-  // 3. Billing State
-  const [billingCode, setBillingCode] = useState('CPT-99214 / ICD-10-I10');
-  const [billingAmount, setBillingAmount] = useState('150.00');
-  const [insuranceStatus, setInsuranceStatus] = useState('Verified (Aetna Copay: $25.00)');
-
-  // 4. Triage State
-  const [triageAcuity, setTriageAcuity] = useState('ESI-3 (Urgent)');
-  const [triageNotes, setTriageNotes] = useState('Mild tachypnea. SpO2 96% on room air. Stable hemodynamics.');
-  const [selectedTriageConsultation, setSelectedTriageConsultation] = useState<string>('');
 
   // 5. Receptionist State
   const [receptionPhone, setReceptionPhone] = useState('');
@@ -115,16 +98,11 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
       setPatientsList(validPatients);
       setDoctorsList(validDoctors);
 
-      if (validPatients.length > 0) {
-        if (!selectedLabPatient) setSelectedLabPatient(validPatients[0].id);
-        if (!selectedRadioPatient) setSelectedRadioPatient(validPatients[0].id);
-        if (!receptionPatientId) setReceptionPatientId(validPatients[0].id);
+      if (validPatients.length > 0 && !receptionPatientId) {
+        setReceptionPatientId(validPatients[0].id);
       }
       if (validDoctors.length > 0 && !receptionDoctorId) {
         setReceptionDoctorId(validDoctors[0].id);
-      }
-      if (validConsultations.length > 0 && !selectedTriageConsultation) {
-        setSelectedTriageConsultation(validConsultations[0].id);
       }
     } catch (err: any) {
       console.warn('Failed to load station datasets:', err);
@@ -132,6 +110,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
       setLoading(false);
     }
   };
+
 
   // Helper metadata by role
   const getStationInfo = () => {
@@ -234,168 +213,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   const station = getStationInfo();
   const IconComponent = station.icon;
 
-  // Dispense Prescription (for Pharmacist)
-  const handleDispenseRx = async (rxId: string) => {
-    try {
-      const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/prescriptions/${rxId}/status`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          status: 'DISPENSED',
-          statusReason: `Dispensed and verified by ${user?.firstName} ${user?.lastName} (RPh License #${user?.medicalLicenseNo || 'PHARM-8941'})`
-        })
-      });
 
-      if (res.ok) {
-        // Dispatch instant patient pickup SMS alert
-        fetch(`${API_BASE}/sms/prescription-alert`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            prescriptionId: rxId,
-            pharmacyName: 'TeleMedSecure Clinical Pharmacy'
-          })
-        }).catch(console.warn);
-
-        setActionSuccess(`Prescription #${rxId.slice(0, 8)} successfully marked DISPENSED. Outbound SMS notification sent to patient!`);
-        setTimeout(() => setActionSuccess(null), 5000);
-        fetchStationData();
-      } else {
-        const err = await res.json();
-        setActionError(err.error || 'Failed to update prescription status');
-      }
-    } catch (e: any) {
-      setActionError(`Dispense error: ${e.message}`);
-    }
-  };
-
-  // Encrypt and seal Diagnostic Lab Result (for Lab Tech)
-  const handleSaveLabResult = async () => {
-    setIsSubmittingAction(true);
-    setActionError(null);
-    try {
-      const targetPatientId = selectedLabPatient || patientsList[0]?.id;
-      if (!targetPatientId) {
-        setActionError('Please select a patient to record laboratory findings');
-        return;
-      }
-      const headers = getAuthHeaders();
-      const labPayload = {
-        type: 'LABORATORY_REPORT',
-        testPanel: labTestType,
-        specimen: labSpecimenType,
-        findings: labValueResult,
-        recordedBy: `${user?.firstName} ${user?.lastName} (${user?.medicalLicenseNo || 'MLT-ACTIVE'})`,
-        timestamp: new Date().toISOString()
-      };
-      const res = await fetch(`${API_BASE}/medical-records`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          patientId: targetPatientId,
-          data: labPayload
-        })
-      });
-      if (res.ok) {
-        setActionSuccess(`Laboratory panel [${labTestType}] envelope-encrypted (AES-256-GCM) and sealed to patient EHR. Attending physician notified.`);
-        setTimeout(() => setActionSuccess(null), 5000);
-      } else {
-        const d = await res.json().catch(() => ({}));
-        setActionError(d.error || 'Failed to seal diagnostic result');
-      }
-    } catch (e: any) {
-      setActionError(`Lab error: ${e.message}`);
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
-
-  // Sign and publish Teleradiology Report (for Radiologist)
-  const handleSaveRadiologyReport = async () => {
-    setIsSubmittingAction(true);
-    setActionError(null);
-    try {
-      const targetPatientId = selectedRadioPatient || patientsList[0]?.id;
-      if (!targetPatientId) {
-        setActionError('Please select a patient for imaging review');
-        return;
-      }
-      const headers = getAuthHeaders();
-      const radioPayload = {
-        type: 'RADIOLOGY_REPORT',
-        modality: imagingType,
-        impression: imagingImpression,
-        criticalFinding: isUrgentFinding,
-        radiologist: `Dr. ${user?.firstName} ${user?.lastName} (${user?.medicalLicenseNo || 'RAD-TELE'})`,
-        timestamp: new Date().toISOString()
-      };
-      const res = await fetch(`${API_BASE}/medical-records`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          patientId: targetPatientId,
-          data: radioPayload
-        })
-      });
-      if (res.ok) {
-        if (isUrgentFinding) {
-          fetch(`${API_BASE}/vital-signs/clinical-flags`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              patientId: targetPatientId,
-              type: 'ACUTE_RADIOLOGY_FINDING',
-              severity: 'CRITICAL',
-              flagReason: `Acute Radiological Finding: ${imagingType} - ${imagingImpression.slice(0, 80)}...`
-            })
-          }).catch(console.warn);
-        }
-        setActionSuccess(`Radiological impression for [${imagingType}] cryptographically signed and stored in EHR.${isUrgentFinding ? ' Critical alert broadcasted to clinical team.' : ''}`);
-        setTimeout(() => setActionSuccess(null), 5000);
-      } else {
-        const d = await res.json().catch(() => ({}));
-        setActionError(d.error || 'Failed to sign and publish radiology report');
-      }
-    } catch (e: any) {
-      setActionError(`Radiology error: ${e.message}`);
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
-
-  // Publish Emergency Triage Acuity Assessment (for Triage Officer)
-  const handleSaveTriageAssessment = async () => {
-    setIsSubmittingAction(true);
-    setActionError(null);
-    try {
-      const targetConsultation = consultations.find(c => c.id === selectedTriageConsultation) || consultations[0];
-      const targetPatientId = targetConsultation?.patient?.id || patientsList[0]?.id;
-      const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/vital-signs/clinical-flags`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          consultationId: targetConsultation?.id,
-          patientId: targetPatientId,
-          type: 'TRIAGE_ACUITY_ASSIGNED',
-          severity: triageAcuity.includes('Level 1') || triageAcuity.includes('Level 2') ? 'CRITICAL' : 'HIGH',
-          flagReason: `Triage Acuity [${triageAcuity}]: ${triageNotes}`
-        })
-      });
-      if (res.ok) {
-        setActionSuccess(`Patient triaged at [${triageAcuity}]. Routing priority and clinical flag broadcasted to physician queue.`);
-        setTimeout(() => setActionSuccess(null), 5000);
-      } else {
-        const d = await res.json().catch(() => ({}));
-        setActionError(d.error || 'Failed to record triage acuity');
-      }
-    } catch (e: any) {
-      setActionError(`Triage error: ${e.message}`);
-    } finally {
-      setIsSubmittingAction(false);
-    }
-  };
 
   // Schedule Appointment from Front Desk (for Receptionist)
   const handleReceptionSchedule = async (e: React.FormEvent) => {
@@ -518,305 +336,39 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
           </div>
         )}
 
-        {/* KPI Operational Metrics Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {station.kpis.map((kpi, idx) => (
-            <div key={idx} className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-lg space-y-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{kpi.label}</span>
-              <div className="text-2xl font-black text-white tracking-tight">{kpi.val}</div>
-              <p className="text-[11px] text-cyan-400 font-mono">{kpi.sub}</p>
-            </div>
-          ))}
-        </div>
+        {/* KPI Operational Metrics Cards (Receptionist Station) */}
+        {stationRole === 'RECEPTIONIST' && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {station.kpis.map((kpi, idx) => (
+              <div key={idx} className="p-5 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-lg space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{kpi.label}</span>
+                <div className="text-2xl font-black text-white tracking-tight">{kpi.val}</div>
+                <p className="text-[11px] text-cyan-400 font-mono">{kpi.sub}</p>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Role-Specific Operational Workspace */}
         {/* ============================================================== */}
         {/* 1. PHARMACIST WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'PHARMACIST' && (
-          <div className="space-y-6">
-            <div className="rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl overflow-hidden">
-              <div className="p-6 border-b border-slate-800 flex items-center justify-between">
-                <div>
-                  <h3 className="text-base font-bold text-white">e-Prescription Dispensing & DEA EPCS Verification Queue</h3>
-                  <p className="text-xs text-slate-400">Digitally signed prescriptions awaiting verification, dosage review, and pharmacy fulfillment</p>
-                </div>
-                <span className="px-3 py-1 rounded-full text-xs font-mono bg-cyan-950 border border-cyan-500/30 text-cyan-400">
-                  {prescriptions.length} Active Prescriptions
-                </span>
-              </div>
-
-              {prescriptions.length === 0 ? (
-                <div className="p-12 text-center text-slate-500">
-                  <Pill className="w-10 h-10 mx-auto mb-3 opacity-40 text-cyan-400" />
-                  <p className="text-sm font-semibold text-slate-300">No pending prescriptions in queue</p>
-                  <p className="text-xs text-slate-500 mt-1">Prescriptions issued by attending physicians will appear here in real-time.</p>
-                </div>
-              ) : (
-                <div className="divide-y divide-slate-800">
-                  {prescriptions.map((rx) => (
-                    <div key={rx.id} className="p-6 hover:bg-slate-850/50 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
-                      <div className="space-y-2">
-                        <div className="flex items-center space-x-2">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                            rx.status === 'DISPENSED'
-                              ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                              : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                          }`}>
-                            {rx.status}
-                          </span>
-                          <span className="text-xs font-mono text-cyan-400 font-bold">RX-#{rx.id.slice(0, 8).toUpperCase()}</span>
-                          <span className="text-xs text-slate-400">Issued: {new Date(rx.createdAt).toLocaleDateString()}</span>
-                        </div>
-
-                        <div>
-                          <h4 className="text-sm font-bold text-white">
-                            Patient: {rx.consultation?.patient ? `${rx.consultation.patient.firstName} ${rx.consultation.patient.lastName}` : 'Direct Patient'} • Prescribing MD: Dr. {rx.doctor?.firstName} {rx.doctor?.lastName}
-                          </h4>
-                          <div className="mt-1 flex flex-wrap gap-2">
-                            {rx.items?.map((item: any, i: number) => (
-                              <span key={i} className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-300">
-                                <strong className="text-white">{item.medication}</strong> ({item.dosage}) - {item.instructions}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="flex items-center space-x-3 text-[11px] text-slate-400">
-                          <span className="flex items-center space-x-1 text-emerald-400">
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            <span>Ed25519 Signature Verified</span>
-                          </span>
-                          <span>•</span>
-                          <span>Canonical Hash: {rx.signature?.canonicalHash?.slice(0, 12) || 'Verified'}...</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => navigate(`/prescriptions/${rx.id}/verify`)}
-                          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 transition"
-                        >
-                          Inspect Signature
-                        </button>
-                        {rx.status !== 'DISPENSED' && (
-                          <button
-                            onClick={() => handleDispenseRx(rx.id)}
-                            className="px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-md shadow-emerald-600/20"
-                          >
-                            <Pill className="w-3.5 h-3.5" />
-                            <span>Dispense & SMS Patient</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <PharmacyWorkbench />
         )}
 
         {/* ============================================================== */}
         {/* 2. LAB TECHNICIAN WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'LAB_TECHNICIAN' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400">
-                  <FlaskConical className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Diagnostic Laboratory Order Intake & Result Entry</h3>
-                  <p className="text-xs text-slate-400">Record specimen barcodes, enter quantitative biochemical analyses, and publish encrypted lab reports</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 pt-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Select Patient *
-                  </label>
-                  <select
-                    value={selectedLabPatient}
-                    onChange={e => setSelectedLabPatient(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
-                  >
-                    {patientsList.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.firstName} {p.lastName} ({p.email})
-                      </option>
-                    ))}
-                    {patientsList.length === 0 && <option value="">No patients registered</option>}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Specimen Type & Container
-                  </label>
-                  <select
-                    value={labSpecimenType}
-                    onChange={e => setLabSpecimenType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-emerald-500"
-                  >
-                    <option value="Venous Blood (EDTA)">Venous Blood (EDTA Tube)</option>
-                    <option value="Serum (SST Gold Top)">Serum (SST Gel Separator)</option>
-                    <option value="Midstream Clean-Catch Urine">Midstream Clean-Catch Urine</option>
-                    <option value="Nasopharyngeal Swab (Viral Media)">Nasopharyngeal Swab (RT-PCR)</option>
-                    <option value="Biopsy Tissue (Formalin Fixed)">Biopsy Tissue (Formalin Fixed)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Diagnostic Test Panel
-                  </label>
-                  <input
-                    type="text"
-                    value={labTestType}
-                    onChange={e => setLabTestType(e.target.value)}
-                    placeholder="Comprehensive Metabolic Panel (CMP)"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Accession Barcode Number
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={`LAB-ACC-${Date.now().toString().slice(-6)}`}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-cyan-400 font-mono text-xs focus:outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Quantitative Test Findings & Reference Ranges
-                </label>
-                <textarea
-                  rows={3}
-                  value={labValueResult}
-                  onChange={e => setLabValueResult(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-emerald-500"
-                  placeholder="Enter quantitative laboratory values..."
-                />
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleSaveLabResult}
-                  disabled={isSubmittingAction}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-2"
-                >
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>{isSubmittingAction ? 'Encrypting with AES-256-GCM...' : 'Encrypt & Seal Diagnostic Result'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <LabStationWorkbench />
         )}
 
         {/* ============================================================== */}
         {/* 3. RADIOLOGIST WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'RADIOLOGIST' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-purple-500/10 border border-purple-500/20 text-purple-400">
-                  <Scan className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Teleradiology PACS Reading & Imaging Review Station</h3>
-                  <p className="text-xs text-slate-400">Interpret radiographic modalities, record structured clinical impressions, and flag acute emergencies</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Select Patient *
-                  </label>
-                  <select
-                    value={selectedRadioPatient}
-                    onChange={e => setSelectedRadioPatient(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-purple-500"
-                  >
-                    {patientsList.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.firstName} {p.lastName} ({p.email})
-                      </option>
-                    ))}
-                    {patientsList.length === 0 && <option value="">No patients registered</option>}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Imaging Modality & Anatomical View
-                  </label>
-                  <input
-                    type="text"
-                    value={imagingType}
-                    onChange={e => setImagingType(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-purple-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    DICOM PACS Study UID
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue={`1.2.840.10008.5.1.4.1.1.7.${Date.now()}`}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-purple-400 font-mono text-xs focus:outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Radiological Impression & Diagnostic Findings
-                </label>
-                <textarea
-                  rows={4}
-                  value={imagingImpression}
-                  onChange={e => setImagingImpression(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-purple-500"
-                  placeholder="Enter radiological impressions..."
-                />
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isUrgentFinding}
-                    onChange={e => setIsUrgentFinding(e.target.checked)}
-                    className="w-4 h-4 rounded text-red-600 focus:ring-red-500 bg-slate-950 border-slate-700"
-                  />
-                  <span className="text-xs text-red-400 font-bold">Flag as Critical / Acute Finding (Triggers instant SMS to MD)</span>
-                </label>
-
-                <button
-                  onClick={handleSaveRadiologyReport}
-                  disabled={isSubmittingAction}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-purple-600/20 flex items-center space-x-2"
-                >
-                  <FileCheck className="w-4 h-4" />
-                  <span>{isSubmittingAction ? 'Cryptographically Signing...' : 'Sign & Publish Radiology Report'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <RadiologyWorkbench />
         )}
 
         {/* ============================================================== */}
@@ -830,142 +382,16 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
         {/* 5. TRIAGE OFFICER WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'TRIAGE_OFFICER' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400">
-                  <HeartPulse className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Emergency Intake & Acuity Triage Sorting</h3>
-                  <p className="text-xs text-slate-400">Assign Emergency Severity Index (ESI) scores and route patients to priority queues</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Select Consultation / Patient *
-                  </label>
-                  <select
-                    value={selectedTriageConsultation}
-                    onChange={e => setSelectedTriageConsultation(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-rose-500"
-                  >
-                    {consultations.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : `Consultation #${c.id.slice(0, 6)}`} (Dr. {c.doctor?.lastName || 'Physician'})
-                      </option>
-                    ))}
-                    {consultations.length === 0 && <option value="">No consultations in queue</option>}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Emergency Severity Index (ESI)
-                  </label>
-                  <select
-                    value={triageAcuity}
-                    onChange={e => setTriageAcuity(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-semibold focus:outline-none focus:border-rose-500"
-                  >
-                    <option value="ESI-1 (Immediate Resuscitation)">Level 1 - Immediate Resuscitation Required</option>
-                    <option value="ESI-2 (Emergent / High Risk)">Level 2 - Emergent / High Risk / Severe Pain</option>
-                    <option value="ESI-3 (Urgent / Multi-Resource)">Level 3 - Urgent (Multiple Diagnostic Resources)</option>
-                    <option value="ESI-4 (Less Urgent / Single Resource)">Level 4 - Less Urgent (Single Diagnostic Resource)</option>
-                    <option value="ESI-5 (Non-Urgent / Routine)">Level 5 - Non-Urgent (Routine Follow-up)</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Virtual Waiting Room Routing
-                  </label>
-                  <input
-                    type="text"
-                    defaultValue="General Clinical Queue #A-102"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-rose-400 font-mono text-xs focus:outline-none"
-                    readOnly
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                  Intake Assessment & Primary Complaints
-                </label>
-                <textarea
-                  rows={3}
-                  value={triageNotes}
-                  onChange={e => setTriageNotes(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-rose-500"
-                />
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={handleSaveTriageAssessment}
-                  disabled={isSubmittingAction}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 disabled:opacity-50 text-white font-bold text-xs transition shadow-lg shadow-rose-600/20 flex items-center space-x-2"
-                >
-                  <HeartPulse className="w-4 h-4" />
-                  <span>{isSubmittingAction ? 'Publishing Acuity...' : 'Publish Triage Acuity Assessment'}</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <TriageWorkbench />
         )}
 
         {/* ============================================================== */}
         {/* 6. CARE COORDINATOR WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'CARE_COORDINATOR' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400">
-                  <Users className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Chronic Care Management & Multidisciplinary Care Plans</h3>
-                  <p className="text-xs text-slate-400">Coordinate post-discharge transitions, track medication compliance, and schedule recurring telemedicine visits</p>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 space-y-2">
-                <span className="font-bold text-white">Active Chronic Cohorts:</span>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-slate-400 block text-[11px]">Cohort A: Diabetes Type II</span>
-                    <span className="text-emerald-400 font-bold text-sm">14 Patients (94% adherence)</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-slate-400 block text-[11px]">Cohort B: Essential Hypertension</span>
-                    <span className="text-cyan-400 font-bold text-sm">18 Patients (Telemetry Active)</span>
-                  </div>
-                  <div className="p-3 rounded-xl bg-slate-900 border border-slate-800">
-                    <span className="text-slate-400 block text-[11px]">Cohort C: Post-Op Day 7</span>
-                    <span className="text-purple-400 font-bold text-sm">5 Patients (Scheduled)</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => {
-                    setActionSuccess('Multi-disciplinary care plan notes updated. Recurring telemedicine visit scheduled.');
-                    setTimeout(() => setActionSuccess(null), 4500);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-teal-600 to-cyan-600 hover:from-teal-500 hover:to-cyan-500 text-white font-bold text-xs transition shadow-lg shadow-teal-600/20 flex items-center space-x-2"
-                >
-                  <Users className="w-4 h-4" />
-                  <span>Update Care Coordination Roster</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <CareCoordinatorWorkbench />
         )}
+
 
         {/* ============================================================== */}
         {/* 7. RECEPTIONIST WORKSPACE */}
