@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   ShieldCheck,
   FileSearch,
@@ -26,6 +27,8 @@ interface VerificationResult {
 }
 
 export default function ReportVerification() {
+  const { getAuthHeaders } = useAuth();
+
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const [result, setResult] = useState<VerificationResult | null>(null);
@@ -64,9 +67,8 @@ export default function ReportVerification() {
     formData.append('reportPdf', selectedFile);
 
     try {
-      const token = localStorage.getItem('token') || '';
-      const headers: any = {};
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
+      delete headers['Content-Type']; // Let browser set multipart boundary
 
       const res = await fetch(`${API_BASE}/investigation/reports/verify`, {
         method: 'POST',
@@ -112,13 +114,12 @@ export default function ReportVerification() {
           }}
           onDragLeave={() => setDragActive(false)}
           onDrop={handleDrop}
-          className={`p-10 rounded-3xl border-2 border-dashed transition flex flex-col items-center justify-center text-center space-y-4 ${
-            dragActive
-              ? 'border-cyan-400 bg-cyan-950/20'
-              : selectedFile
+          className={`p-10 rounded-3xl border-2 border-dashed transition flex flex-col items-center justify-center text-center space-y-4 ${dragActive
+            ? 'border-cyan-400 bg-cyan-950/20'
+            : selectedFile
               ? 'border-emerald-500/50 bg-slate-900/80'
               : 'border-slate-800 bg-slate-900/40 hover:border-slate-700'
-          }`}
+            }`}
         >
           <div className="w-16 h-16 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 shadow-lg">
             {selectedFile ? <FileText className="w-8 h-8 text-emerald-400" /> : <UploadCloud className="w-8 h-8" />}
@@ -169,20 +170,18 @@ export default function ReportVerification() {
         {/* Verification Result Card */}
         {result && (
           <div
-            className={`p-8 rounded-3xl border shadow-2xl transition space-y-6 ${
-              result.isValid
-                ? 'bg-gradient-to-b from-emerald-950/30 via-slate-900 to-slate-950 border-emerald-500/40 shadow-emerald-950/40'
-                : 'bg-gradient-to-b from-red-950/30 via-slate-900 to-slate-950 border-red-500/40 shadow-red-950/40'
-            }`}
+            className={`p-8 rounded-3xl border shadow-2xl transition space-y-6 ${result.isValid
+              ? 'bg-gradient-to-b from-emerald-950/30 via-slate-900 to-slate-950 border-emerald-500/40 shadow-emerald-950/40'
+              : 'bg-gradient-to-b from-red-950/30 via-slate-900 to-slate-950 border-red-500/40 shadow-red-950/40'
+              }`}
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
               <div className="flex items-center space-x-4">
                 <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
-                    result.isValid
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                  }`}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${result.isValid
+                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                    : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                    }`}
                 >
                   {result.isValid ? (
                     <CheckCircle2 className="w-8 h-8" />
@@ -193,11 +192,10 @@ export default function ReportVerification() {
                 <div>
                   <div className="flex items-center space-x-2">
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                        result.isValid
-                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                          : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                      }`}
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${result.isValid
+                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                        }`}
                     >
                       {result.status}
                     </span>
@@ -216,9 +214,8 @@ export default function ReportVerification() {
               <div className="text-right">
                 <span className="text-xs text-slate-400 uppercase font-semibold">On-Chain Anchor</span>
                 <div
-                  className={`text-sm font-bold font-mono mt-0.5 ${
-                    result.onChainAnchored ? 'text-emerald-400' : 'text-red-400'
-                  }`}
+                  className={`text-sm font-bold font-mono mt-0.5 ${result.onChainAnchored ? 'text-emerald-400' : 'text-red-400'
+                    }`}
                 >
                   {result.onChainAnchored ? 'ANCHORED (FOUND)' : 'NOT ANCHORED (ABSENT)'}
                 </div>

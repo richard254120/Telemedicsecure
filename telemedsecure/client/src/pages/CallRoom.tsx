@@ -48,7 +48,7 @@ const ICE_SERVERS: RTCConfiguration = {
 export default function CallRoom() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, getAuthHeaders } = useAuth();
 
   // Socket & WebRTC State
   const [socket, setSocket] = useState<Socket | null>(null);
@@ -474,13 +474,10 @@ export default function CallRoom() {
     setSmsSending(true);
     setSmsFeedback(null);
     try {
-      const token = localStorage.getItem('token');
+      const headers = getAuthHeaders();
       const res = await fetch(`${API_BASE}/sms/doctor-ready`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({
           consultationId: id,
           patientPhone: patientPhone.trim(),
@@ -514,16 +511,14 @@ export default function CallRoom() {
           </div>
 
           <div
-            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${
-              callStatus === 'CONNECTED'
-                ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-400'
-                : 'bg-amber-950/60 border-amber-500/30 text-amber-400'
-            }`}
+            className={`flex items-center space-x-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${callStatus === 'CONNECTED'
+              ? 'bg-emerald-950/60 border-emerald-500/30 text-emerald-400'
+              : 'bg-amber-950/60 border-amber-500/30 text-amber-400'
+              }`}
           >
             <span
-              className={`w-2 h-2 rounded-full ${
-                callStatus === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
-              }`}
+              className={`w-2 h-2 rounded-full ${callStatus === 'CONNECTED' ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'
+                }`}
             />
             <span>{callStatus === 'CONNECTED' ? 'WebRTC Live (P2P)' : 'Waiting for Remote Peer'}</span>
           </div>
@@ -553,11 +548,10 @@ export default function CallRoom() {
 
           <button
             onClick={() => setShowChat(!showChat)}
-            className={`p-2 rounded-xl border text-xs transition ${
-              showChat
-                ? 'bg-blue-600 border-blue-500 text-white'
-                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-            }`}
+            className={`p-2 rounded-xl border text-xs transition ${showChat
+              ? 'bg-blue-600 border-blue-500 text-white'
+              : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+              }`}
             title="Toggle Secure Chat"
           >
             <MessageSquare className="w-4 h-4" />
@@ -574,9 +568,8 @@ export default function CallRoom() {
             ref={remoteVideoRef}
             autoPlay
             playsInline
-            className={`w-full h-full object-cover transition-opacity duration-300 ${
-              hasRemoteStream ? 'opacity-100' : 'opacity-0'
-            }`}
+            className={`w-full h-full object-cover transition-opacity duration-300 ${hasRemoteStream ? 'opacity-100' : 'opacity-0'
+              }`}
           />
 
           {/* Fallback Overlay when Remote Peer is not yet transmitting */}
@@ -615,9 +608,8 @@ export default function CallRoom() {
               autoPlay
               playsInline
               muted
-              className={`w-full h-full object-cover transform -scale-x-100 ${
-                isVideoDisabled ? 'hidden' : 'block'
-              }`}
+              className={`w-full h-full object-cover transform -scale-x-100 ${isVideoDisabled ? 'hidden' : 'block'
+                }`}
             />
             {isVideoDisabled && (
               <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900 text-slate-400">
@@ -644,11 +636,10 @@ export default function CallRoom() {
             {/* Toggle Mic */}
             <button
               onClick={toggleAudio}
-              className={`p-3 rounded-xl transition ${
-                isAudioMuted
-                  ? 'bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30'
-                  : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
-              }`}
+              className={`p-3 rounded-xl transition ${isAudioMuted
+                ? 'bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30'
+                : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
+                }`}
               title={isAudioMuted ? 'Unmute Microphone' : 'Mute Microphone'}
             >
               {isAudioMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -657,11 +648,10 @@ export default function CallRoom() {
             {/* Toggle Camera */}
             <button
               onClick={toggleVideo}
-              className={`p-3 rounded-xl transition ${
-                isVideoDisabled
-                  ? 'bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30'
-                  : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
-              }`}
+              className={`p-3 rounded-xl transition ${isVideoDisabled
+                ? 'bg-red-500/20 border border-red-500/40 text-red-400 hover:bg-red-500/30'
+                : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
+                }`}
               title={isVideoDisabled ? 'Turn On Camera' : 'Turn Off Camera'}
             >
               {isVideoDisabled ? <VideoOff className="w-5 h-5" /> : <VideoIcon className="w-5 h-5" />}
@@ -670,11 +660,10 @@ export default function CallRoom() {
             {/* Screen Share */}
             <button
               onClick={toggleScreenShare}
-              className={`p-3 rounded-xl transition ${
-                isScreenSharing
-                  ? 'bg-cyan-600 border border-cyan-500 text-white'
-                  : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
-              }`}
+              className={`p-3 rounded-xl transition ${isScreenSharing
+                ? 'bg-cyan-600 border border-cyan-500 text-white'
+                : 'bg-slate-800 border border-slate-700 text-slate-200 hover:bg-slate-700'
+                }`}
               title={isScreenSharing ? 'Stop Screen Share' : 'Share Screen'}
             >
               <Share2 className="w-5 h-5" />
@@ -730,11 +719,10 @@ export default function CallRoom() {
                     className={`flex flex-col ${msg.sender === 'Me' ? 'items-end' : 'items-start'}`}
                   >
                     <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-md ${
-                        msg.sender === 'Me'
-                          ? 'bg-blue-600 text-white rounded-br-none'
-                          : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none'
-                      }`}
+                      className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-xs shadow-md ${msg.sender === 'Me'
+                        ? 'bg-blue-600 text-white rounded-br-none'
+                        : 'bg-slate-800 text-slate-200 border border-slate-700 rounded-bl-none'
+                        }`}
                     >
                       <p className="leading-relaxed">{msg.text}</p>
                     </div>
@@ -841,11 +829,10 @@ export default function CallRoom() {
 
             {smsFeedback && (
               <div
-                className={`p-3 rounded-xl mb-4 text-xs flex items-center space-x-2 ${
-                  smsFeedback.type === 'success'
-                    ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
-                    : 'bg-red-500/20 border border-red-500/40 text-red-300'
-                }`}
+                className={`p-3 rounded-xl mb-4 text-xs flex items-center space-x-2 ${smsFeedback.type === 'success'
+                  ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300'
+                  : 'bg-red-500/20 border border-red-500/40 text-red-300'
+                  }`}
               >
                 {smsFeedback.type === 'success' ? (
                   <CheckCircle2 className="w-4 h-4 shrink-0" />

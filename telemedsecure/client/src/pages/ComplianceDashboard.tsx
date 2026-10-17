@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { useAuth } from '../context/AuthContext';
 import { API_BASE, WS_URL, BACKEND_URL } from '../config';
 import {
   ShieldAlert,
@@ -63,6 +64,8 @@ interface ConsentRecord {
 }
 
 export default function ComplianceDashboard() {
+  const { getAuthHeaders } = useAuth();
+
   const [alerts, setAlerts] = useState<SecurityAlert[]>([]);
   const [violations, setViolations] = useState<ComplianceViolation[]>([]);
   const [rules, setRules] = useState<RuleDefinition[]>([]);
@@ -88,13 +91,9 @@ export default function ComplianceDashboard() {
   const [socketConnected, setSocketConnected] = useState(false);
   const socketRef = useRef<Socket | null>(null);
 
-  // Demo patient & auth token
-  const token = localStorage.getItem('token') || '';
-
   const fetchData = async () => {
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       const [vRes, aRes, rRes, cRes] = await Promise.all([
         fetch(`${API_BASE}/compliance/violations`, { headers }).then(r => r.json()),
@@ -326,31 +325,28 @@ export default function ComplianceDashboard() {
         <div className="flex space-x-2 border-b border-slate-800 pb-2">
           <button
             onClick={() => setActiveTab('alerts')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === 'alerts'
-                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'alerts'
+              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
           >
             Live Alerts & Violations ({alerts.length})
           </button>
           <button
             onClick={() => setActiveTab('rules')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === 'rules'
-                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'rules'
+              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
           >
             The 9 Detection Rules & Tester
           </button>
           <button
             onClick={() => setActiveTab('gdpr')}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${
-              activeTab === 'gdpr'
-                ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
-                : 'text-slate-400 hover:text-white hover:bg-slate-900'
-            }`}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition ${activeTab === 'gdpr'
+              ? 'bg-indigo-600/20 text-indigo-300 border border-indigo-500/30 shadow-sm'
+              : 'text-slate-400 hover:text-white hover:bg-slate-900'
+              }`}
           >
             GDPR Portal (Consent, Export, Erasure)
           </button>
@@ -607,11 +603,10 @@ export default function ComplianceDashboard() {
                       <div className="text-[10px] text-slate-500 font-mono">Purpose: {item.purpose}</div>
                       <button
                         onClick={() => handleToggleConsent(item.purpose, !active)}
-                        className={`w-full py-1.5 rounded text-xs font-medium transition ${
-                          active
-                            ? 'bg-red-600/20 text-red-300 hover:bg-red-600/40 border border-red-500/30'
-                            : 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30'
-                        }`}
+                        className={`w-full py-1.5 rounded text-xs font-medium transition ${active
+                          ? 'bg-red-600/20 text-red-300 hover:bg-red-600/40 border border-red-500/30'
+                          : 'bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/40 border border-emerald-500/30'
+                          }`}
                       >
                         {active ? 'Revoke Consent' : 'Grant Consent'}
                       </button>
