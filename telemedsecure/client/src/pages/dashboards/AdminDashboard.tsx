@@ -164,14 +164,14 @@ export default function AdminDashboard() {
       const res = await fetch(`${API_BASE}/admin/invitations`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresInMinutes: 5 })
+        body: JSON.stringify({ email: inviteEmail, role: inviteRole, expiresInHours: inviteHours })
       });
       const data = await res.json();
       if (res.ok) {
         const inviteLink = `${window.location.origin}/login?invite=${data.token}&email=${encodeURIComponent(inviteEmail)}`;
         setGeneratedInvite({ token: data.token, link: inviteLink, email: inviteEmail });
         setInviteEmail('');
-        setActionMessage(`Issued single-use ${inviteRole} onboarding invitation (valid for 5 minutes)`);
+        setActionMessage(`Issued single-use ${inviteRole} onboarding invitation (valid for ${inviteHours} hours)`);
         fetchAllAdminData();
         setTimeout(() => setActionMessage(null), 5000);
       } else {

@@ -87,7 +87,7 @@ export default function Login() {
       if (res.ok && data.valid) {
         setInviteData(data);
         setEmail(data.email);
-        setInviteToken(token.trim());
+        setInviteToken(rawToken);
         setInviteExpired(false);
       } else {
         setInviteExpired(data.expired || false);

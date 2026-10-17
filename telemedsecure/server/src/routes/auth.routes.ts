@@ -177,7 +177,7 @@ router.post('/register-staff', async (req, res) => {
 
     if (invitation.expiresAt < new Date()) {
       return res.status(400).json({
-        error: 'This invitation token has expired (valid for 5 minutes). Please request a new invitation from your administrator.',
+        error: 'This invitation token has expired. Please request a new invitation from your administrator.',
         expired: true
       });
     }
