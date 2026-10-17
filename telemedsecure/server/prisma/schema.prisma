@@ -94,6 +94,9 @@ model User {
   consents             Consent[]
   erasureRequests      ErasureRequest[]
   staffInvitations     StaffInvitation[] @relation("AdminStaffInvitations")
+  invoices             Invoice[]
+  claims               InsuranceClaim[]
+  eligibilities        InsuranceEligibility[]
 }
 
 model StaffInvitation {
@@ -135,6 +138,7 @@ model Consultation {
 
   prescriptions Prescription[]
   vitalSigns    VitalSign[]
+  invoices      Invoice[]
 }
 
 model MedicalRecord {
@@ -377,3 +381,118 @@ model ClinicalFlag {
   resolved       Boolean      @default(false)
   createdAt      DateTime     @default(now())
 }
+
+enum InvoiceStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+  REFUNDED
+}
+
+enum ClaimStatus {
+  DRAFT
+  SCRUBBED
+  SUBMITTED
+  IN_REVIEW
+  APPROVED
+  DENIED
+  APPEALED
+  SETTLED
+}
+
+model Invoice {
+  id               String        @id @default(uuid())
+  invoiceNumber    String        @unique
+  patientId        String
+  consultationId   String?
+  totalAmount      Float
+  insuranceCovered Float         @default(0.0)
+  patientDue       Float
+  status           InvoiceStatus @default(PENDING)
+  paymentMethod    String?
+  paymentReference String?
+  dueDate          DateTime
+  paidAt           DateTime?
+  notes            String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  patient          User          @relation(fields: [patientId], references: [id])
+  consultation     Consultation? @relation(fields: [consultationId], references: [id])
+  items            InvoiceItem[]
+  claims           InsuranceClaim[]
+  payments         BillingPayment[]
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  serviceType String   // "CONSULTATION", "LAB_TEST", "MEDICATION", "TRIAGE", "IMAGING", "RPM"
+  cptCode     String?  // e.g. "99214", "80061", "99058"
+  description String
+  quantity    Int      @default(1)
+  unitPrice   Float
+  totalPrice  Float
+  createdAt   DateTime @default(now())
+
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model InsuranceClaim {
+  id                String      @id @default(uuid())
+  claimNumber       String      @unique
+  invoiceId         String
+  patientId         String
+  payerName         String
+  policyNumber      String
+  groupNumber       String?
+  icd10Codes        String[]
+  cptCodes          String[]
+  billedAmount      Float
+  approvedAmount    Float?
+  copayAmount       Float       @default(0.0)
+  deductibleAmount  Float       @default(0.0)
+  status            ClaimStatus @default(DRAFT)
+  clearinghouseTxId String?
+  denialReason      String?
+  appealNotes       String?
+  submittedAt       DateTime?
+  adjudicatedAt     DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  invoice           Invoice     @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  patient           User        @relation(fields: [patientId], references: [id])
+}
+
+model BillingPayment {
+  id             String   @id @default(uuid())
+  invoiceId      String
+  amount         Float
+  method         String   // "CREDIT_CARD", "INSURANCE_SETTLEMENT", "HSA_FSA", "MPESA"
+  transactionRef String
+  payerEmail     String?
+  receiptUrl     String?
+  status         String   @default("COMPLETED")
+  createdAt      DateTime @default(now())
+
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model InsuranceEligibility {
+  id                  String   @id @default(uuid())
+  patientId           String
+  payerName           String
+  policyNumber        String
+  status              String   @default("ACTIVE")
+  copayAmount         Float    @default(25.0)
+  deductibleRemaining Float    @default(500.0)
+  coveragePercent     Float    @default(80.0)
+  verifiedAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  patient             User     @relation(fields: [patientId], references: [id])
+}
+

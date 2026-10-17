@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
+import BillingOfficerWorkbench from '../../components/BillingOfficerWorkbench';
 
 interface StaffStationDashboardProps {
   stationRole: UserRole;
@@ -822,70 +823,7 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
         {/* 4. BILLING & INSURANCE OFFICER WORKSPACE */}
         {/* ============================================================== */}
         {stationRole === 'BILLING_OFFICER' && (
-          <div className="space-y-6">
-            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400">
-                  <CreditCard className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-base font-bold text-white">Medical Billing, Claims & Insurance Pre-Authorization</h3>
-                  <p className="text-xs text-slate-400">HIPAA Isolated Financial Management: Process invoices, verify coverage, and submit insurance claims</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Procedure & Diagnosis Codes
-                  </label>
-                  <input
-                    type="text"
-                    value={billingCode}
-                    onChange={e => setBillingCode(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Fee Amount (USD)
-                  </label>
-                  <input
-                    type="text"
-                    value={billingAmount}
-                    onChange={e => setBillingAmount(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs font-mono focus:outline-none focus:border-amber-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Payer Verification Status
-                  </label>
-                  <input
-                    type="text"
-                    value={insuranceStatus}
-                    onChange={e => setInsuranceStatus(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-amber-400 text-xs focus:outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  onClick={() => {
-                    setActionSuccess(`Invoice #${Date.now().toString().slice(-6)} ($${billingAmount}) generated and submitted for electronic claims clearing.`);
-                    setTimeout(() => setActionSuccess(null), 4500);
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs transition shadow-lg shadow-amber-600/20 flex items-center space-x-2"
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>Submit Electronic Claim & Invoice</span>
-                </button>
-              </div>
-            </div>
-          </div>
+          <BillingOfficerWorkbench />
         )}
 
         {/* ============================================================== */}

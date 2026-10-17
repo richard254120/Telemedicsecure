@@ -161,6 +161,14 @@ function App() {
                 }
               />
               <Route
+                path="/billing"
+                element={
+                  <ProtectedRoute allowedRoles={['BILLING_OFFICER', 'ADMIN']}>
+                    <StaffStationDashboard stationRole="BILLING_OFFICER" />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
                 path="/triage_officer"
                 element={
                   <ProtectedRoute allowedRoles={['TRIAGE_OFFICER', 'NURSE', 'ADMIN']}>

@@ -25,7 +25,11 @@ import {
   Stethoscope,
   X,
   Send,
-  User
+  User,
+  CreditCard,
+  DollarSign,
+  Receipt,
+  Eye
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -34,13 +38,14 @@ import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 export default function PatientDashboard() {
   const navigate = useNavigate();
   const { user, getAuthHeaders } = useAuth();
-  const [activeTab, setActiveTab] = useState<'appointments' | 'records' | 'prescriptions' | 'consent'>('appointments');
+  const [activeTab, setActiveTab] = useState<'appointments' | 'records' | 'prescriptions' | 'consent' | 'billing'>('appointments');
 
   // State
   const [appointments, setAppointments] = useState<any[]>([]);
   const [records, setRecords] = useState<any[]>([]);
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [consents, setConsents] = useState<any[]>([]);
+  const [patientInvoices, setPatientInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -49,6 +54,10 @@ export default function PatientDashboard() {
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
+  const [selectedInvoiceToPay, setSelectedInvoiceToPay] = useState<any | null>(null);
+  const [selectedStatementView, setSelectedStatementView] = useState<any | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'CREDIT_CARD' | 'HSA_FSA' | 'MPESA'>('CREDIT_CARD');
+  const [payingSubmitting, setPayingSubmitting] = useState(false);
 
   // Booking Form State
   const [doctorsList, setDoctorsList] = useState<any[]>([]);
@@ -97,21 +106,53 @@ export default function PatientDashboard() {
     setLoading(true);
     try {
       const headers = getAuthHeaders();
-      const [appRes, recRes, rxRes, conRes] = await Promise.all([
+      const [appRes, recRes, rxRes, conRes, invRes] = await Promise.all([
         fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/medical-records`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/gdpr/consent`, { headers }).then(r => r.ok ? r.json() : [])
+        fetch(`${API_BASE}/gdpr/consent`, { headers }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE}/billing/invoices`, { headers }).then(r => r.ok ? r.json() : [])
       ]);
 
       setAppointments(Array.isArray(appRes) ? appRes : []);
       setRecords(Array.isArray(recRes) ? recRes : []);
       setPrescriptions(Array.isArray(rxRes) ? rxRes : []);
       setConsents(Array.isArray(conRes) ? conRes : []);
+      setPatientInvoices(Array.isArray(invRes) ? invRes : []);
     } catch (e) {
       console.error('Error loading patient dashboard data', e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePayInvoice = async (invoiceId: string) => {
+    setPayingSubmitting(true);
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      const res = await fetch(`${API_BASE}/billing/invoices/${invoiceId}/pay`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          paymentMethod,
+          transactionReference: `PAY-${Date.now().toString().slice(-6)}`
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Payment failed');
+      }
+
+      const data = await res.json();
+      setActionMessage(`Payment successful! Receipt #${data.receiptNumber} issued.`);
+      setSelectedInvoiceToPay(null);
+      fetchPatientData();
+      setTimeout(() => setActionMessage(null), 5000);
+    } catch (err: any) {
+      setActionMessage(`Payment error: ${err.message}`);
+    } finally {
+      setPayingSubmitting(false);
     }
   };
 
@@ -301,6 +342,7 @@ export default function PatientDashboard() {
             { id: 'appointments', label: 'Appointments', icon: Calendar, count: appointments.length },
             { id: 'records', label: 'Medical Records', icon: FileText, count: records.length },
             { id: 'prescriptions', label: 'Prescriptions', icon: Pill, count: prescriptions.length },
+            { id: 'billing', label: 'Billing & Copays', icon: CreditCard, count: patientInvoices.filter(i => i.status === 'PENDING').length },
             { id: 'consent', label: 'GDPR Consent & Privacy', icon: Shield, count: consents.length }
           ].map(tab => {
             const Icon = tab.icon;
@@ -642,7 +684,276 @@ export default function PatientDashboard() {
             </div>
           </div>
         )}
+
+        {/* Tab 5: Patient Billing, Copays & Financial Statements */}
+        {activeTab === 'billing' && (
+          <div className="space-y-6">
+            {/* Summary Metrics */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg">
+                <span className="text-xs font-medium text-slate-400 block">Total Balance Due</span>
+                <span className="text-2xl font-extrabold text-amber-400 font-mono mt-1 block">
+                  ${patientInvoices
+                    .filter(i => i.status !== 'PAID' && i.status !== 'CANCELLED')
+                    .reduce((acc, i) => acc + i.patientDue, 0)
+                    .toFixed(2)}
+                </span>
+                <span className="text-[11px] text-slate-400 mt-1 block">
+                  {patientInvoices.filter(i => i.status === 'PENDING').length} Unpaid Statements
+                </span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg">
+                <span className="text-xs font-medium text-slate-400 block">Covered by Insurance</span>
+                <span className="text-2xl font-extrabold text-emerald-400 font-mono mt-1 block">
+                  ${patientInvoices.reduce((acc, i) => acc + i.insuranceCovered, 0).toFixed(2)}
+                </span>
+                <span className="text-[11px] text-emerald-500/80 mt-1 block">
+                  Active In-Network Benefits Applied
+                </span>
+              </div>
+
+              <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 shadow-lg">
+                <span className="text-xs font-medium text-slate-400 block">Fully Settled</span>
+                <span className="text-2xl font-extrabold text-white font-mono mt-1 block">
+                  {patientInvoices.filter(i => i.status === 'PAID').length} Invoices
+                </span>
+                <span className="text-[11px] text-blue-400 mt-1 block">
+                  Receipts Available for Download
+                </span>
+              </div>
+            </div>
+
+            {/* Invoices List */}
+            <div className="p-6 rounded-3xl bg-slate-900/80 border border-slate-800 shadow-xl space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                <div>
+                  <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                    <Receipt className="w-5 h-5 text-amber-400" />
+                    <span>Your Telemedicine Invoices & Copays</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">Itemized statements for consultations, labs, and e-prescriptions</p>
+                </div>
+              </div>
+
+              {patientInvoices.length === 0 ? (
+                <div className="py-12 text-center text-slate-500 text-xs">
+                  <Receipt className="w-10 h-10 mx-auto text-slate-700 mb-2" />
+                  <p>You have no billing statements at this time.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950/60 text-slate-400 uppercase text-[10px] tracking-wider font-semibold border-b border-slate-800">
+                      <tr>
+                        <th className="px-4 py-3">Invoice #</th>
+                        <th className="px-4 py-3">Date</th>
+                        <th className="px-4 py-3">Clinical Items</th>
+                        <th className="px-4 py-3">Total</th>
+                        <th className="px-4 py-3">Insurance Paid</th>
+                        <th className="px-4 py-3">You Owe</th>
+                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3 text-right">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/60">
+                      {patientInvoices.map((inv: any) => (
+                        <tr key={inv.id} className="hover:bg-slate-800/40 transition">
+                          <td className="px-4 py-3.5 font-mono text-amber-400 font-bold">
+                            {inv.invoiceNumber}
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-300 font-mono text-[11px]">
+                            {new Date(inv.createdAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className="text-white block font-medium truncate max-w-[200px]">
+                              {inv.items && inv.items.length > 0
+                                ? inv.items.map((i: any) => i.description).join(', ')
+                                : 'Telehealth Encounter'}
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              {inv.items?.length || 1} billable services
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 font-mono text-white">
+                            ${inv.totalAmount.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3.5 font-mono text-emerald-400">
+                            ${inv.insuranceCovered.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3.5 font-mono text-amber-400 font-bold">
+                            ${inv.patientDue.toFixed(2)}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                              inv.status === 'PAID'
+                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            }`}>
+                              {inv.status}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3.5 text-right space-x-2">
+                            <button
+                              onClick={() => setSelectedStatementView(inv)}
+                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition"
+                              title="View Statement"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            {inv.status !== 'PAID' && (
+                              <button
+                                onClick={() => setSelectedInvoiceToPay(inv)}
+                                className="px-3 py-1.5 rounded-lg bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition inline-flex items-center space-x-1"
+                              >
+                                <CreditCard className="w-3.5 h-3.5" />
+                                <span>Pay Now</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Patient Statement Modal */}
+      {selectedStatementView && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white">Telemedicine Itemized Statement</h3>
+                <span className="text-xs text-slate-400 font-mono">Invoice #{selectedStatementView.invoiceNumber}</span>
+              </div>
+              <button onClick={() => setSelectedStatementView(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="divide-y divide-slate-800 border border-slate-800 rounded-xl overflow-hidden bg-slate-950">
+              {selectedStatementView.items?.map((item: any) => (
+                <div key={item.id} className="p-3 flex items-center justify-between text-xs">
+                  <div>
+                    <span className="font-mono text-amber-400 font-bold mr-2">{item.cptCode || 'CPT'}</span>
+                    <span className="text-white">{item.description}</span>
+                  </div>
+                  <span className="font-mono font-bold text-white">${item.totalPrice.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950 font-mono text-xs space-y-1.5">
+              <div className="flex justify-between text-slate-400">
+                <span>Total Charges:</span>
+                <span className="text-white">${selectedStatementView.totalAmount.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-emerald-400">
+                <span>Insurance Paid:</span>
+                <span>-${selectedStatementView.insuranceCovered.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-amber-400 font-bold text-sm pt-2 border-t border-slate-800">
+                <span>Your Due Balance:</span>
+                <span>${selectedStatementView.patientDue.toFixed(2)}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center space-x-1.5"
+              >
+                <Printer className="w-4 h-4" />
+                <span>Print</span>
+              </button>
+              <button
+                onClick={() => setSelectedStatementView(null)}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Patient Payment Modal */}
+      {selectedInvoiceToPay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white">Settle Patient Balance</h3>
+                <span className="text-xs text-slate-400 font-mono">Invoice #{selectedInvoiceToPay.invoiceNumber}</span>
+              </div>
+              <button onClick={() => setSelectedInvoiceToPay(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-between">
+              <span className="text-xs text-slate-400">Amount Due</span>
+              <span className="text-xl font-bold text-amber-400 font-mono">
+                ${selectedInvoiceToPay.patientDue.toFixed(2)}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Select Payment Channel
+              </label>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                {[
+                  { id: 'CREDIT_CARD', label: 'Credit Card' },
+                  { id: 'HSA_FSA', label: 'HSA / FSA' },
+                  { id: 'MPESA', label: 'M-Pesa' }
+                ].map(method => (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => setPaymentMethod(method.id as any)}
+                    className={`py-2 px-3 rounded-xl border text-center font-medium transition ${
+                      paymentMethod === method.id
+                        ? 'bg-amber-500/10 border-amber-500 text-amber-400'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                    }`}
+                  >
+                    {method.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex justify-end space-x-2 pt-3 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setSelectedInvoiceToPay(null)}
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={payingSubmitting}
+                onClick={() => handlePayInvoice(selectedInvoiceToPay.id)}
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-600/20 transition flex items-center space-x-2"
+              >
+                {payingSubmitting ? (
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CreditCard className="w-4 h-4" />
+                )}
+                <span>Authorize & Pay ${selectedInvoiceToPay.patientDue.toFixed(2)}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Official DEA EPCS Prescription Document & QR Modal */}
       {selectedRxForDoc && (
