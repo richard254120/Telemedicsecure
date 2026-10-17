@@ -164,9 +164,15 @@ router.post('/invitations', async (req, res) => {
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
     
     // Explicitly set default expiration to 5 minutes
-    const minutes = expiresInMinutes !== undefined 
-      ? Number(expiresInMinutes) 
-      : (expiresInHours !== undefined ? Number(expiresInHours) * 60 : 5);
+    const minutes = (() => {
+  // Allow overriding default expiration via environment variable (in minutes)
+  const envDefault = process.env.INVITE_DEFAULT_EXPIRATION_MINUTES
+    ? Number(process.env.INVITE_DEFAULT_EXPIRATION_MINUTES)
+    : 60; // default to 60 minutes for production use
+  if (expiresInMinutes !== undefined) return Number(expiresInMinutes);
+  if (expiresInHours !== undefined) return Number(expiresInHours) * 60;
+  return envDefault;
+})();
     const expiresAt = new Date(Date.now() + minutes * 60 * 1000);
 
     const invitation = await prisma.staffInvitation.create({
