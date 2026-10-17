@@ -151,8 +151,7 @@ export default function ComplianceDashboard() {
     setIsSimulating(true);
     setSimMessage(null);
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       const res = await fetch(`${API_BASE}/compliance/simulate`, {
         method: 'POST',
@@ -179,8 +178,7 @@ export default function ComplianceDashboard() {
 
   const handleResolveViolation = async (id: string) => {
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       await fetch(`${API_BASE}/compliance/violations/${id}/resolve`, {
         method: 'POST',
@@ -195,8 +193,7 @@ export default function ComplianceDashboard() {
 
   const handleToggleConsent = async (purpose: string, grant: boolean) => {
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       const endpoint = grant ? '/api/v1/gdpr/consent' : '/api/v1/gdpr/consent/revoke';
       await fetch(`${BACKEND_URL}${endpoint}`, {
@@ -216,8 +213,7 @@ export default function ComplianceDashboard() {
     setExportResult(null);
 
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       const res = await fetch(`${API_BASE}/gdpr/export`, {
         method: 'POST',
@@ -246,8 +242,7 @@ export default function ComplianceDashboard() {
     setErasureLoading(true);
 
     try {
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
+      const headers = getAuthHeaders();
 
       const res = await fetch(`${API_BASE}/gdpr/erasure`, {
         method: 'POST',

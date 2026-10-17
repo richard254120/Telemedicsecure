@@ -89,6 +89,9 @@ export default function IncidentForensicsDashboard() {
   const [generatingReport, setGeneratingReport] = useState(false);
   const [reportResult, setReportResult] = useState<any>(null);
 
+  // Modal State
+  const [showCreateModal, setShowCreateModal] = useState(false);
+
   const fetchIncidents = async () => {
     setLoading(true);
     try {
