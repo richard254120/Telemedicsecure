@@ -23,6 +23,217 @@ const logAudit = async (action: string, resource: string, userId?: string | null
   });
 };
 
+// System-wide statistics and overall performance metrics across the entire platform
+router.get('/stats', async (req, res) => {
+  try {
+    const startTime = Date.now();
+    const [
+      userRoleCounts,
+      totalUsers,
+      activeUsers,
+      lockedUsers,
+      consultations,
+      prescriptions,
+      signedPrescriptionsCount,
+      radiologyStudies,
+      labOrders,
+      triageAssessments,
+      invoices,
+      insuranceClaims,
+      auditEventsCount,
+      violations,
+      alerts,
+      incidents,
+      invitationsCount,
+      activeInvitationsCount,
+    ] = await Promise.all([
+      prisma.user.groupBy({
+        by: ['role'],
+        _count: { id: true },
+      }),
+      prisma.user.count(),
+      prisma.user.count({ where: { isActive: true } }),
+      prisma.user.count({ where: { lockedUntil: { gt: new Date() } } }),
+      prisma.consultation.findMany({
+        select: { status: true, startedAt: true, endedAt: true },
+      }),
+      prisma.prescription.findMany({
+        select: { status: true },
+      }),
+      prisma.digitalSignature.count(),
+      prisma.radiologyStudy.findMany({
+        select: { status: true, modality: true, isUrgent: true },
+      }),
+      prisma.labOrder.findMany({
+        select: { status: true, isCritical: true },
+      }),
+      prisma.triageAssessment.findMany({
+        select: { status: true, esiScore: true },
+      }),
+      prisma.invoice.findMany({
+        select: { totalAmount: true, patientDue: true, insuranceCovered: true, status: true },
+      }),
+      prisma.insuranceClaim.findMany({
+        select: { status: true, billedAmount: true, approvedAmount: true },
+      }),
+      prisma.auditEvent.count(),
+      prisma.complianceViolation.findMany({
+        select: { severity: true, resolved: true },
+      }),
+      prisma.securityAlert.findMany({
+        select: { severity: true },
+      }),
+      prisma.incident.findMany({
+        select: { status: true, severity: true },
+      }),
+      prisma.staffInvitation.count(),
+      prisma.staffInvitation.count({
+        where: { expiresAt: { gt: new Date() }, isAccepted: false },
+      }),
+    ]);
+
+    const dbLatencyMs = Date.now() - startTime;
+
+    // Roles breakdown map
+    const rolesMap: Record<string, number> = {};
+    for (const r of userRoleCounts) {
+      rolesMap[r.role] = r._count.id;
+    }
+
+    // Consultations stats
+    const totalConsultations = consultations.length;
+    const completedConsultations = consultations.filter(c => c.status === 'COMPLETED').length;
+    const inProgressConsultations = consultations.filter(c => c.status === 'IN_PROGRESS').length;
+    const scheduledConsultations = consultations.filter(c => c.status === 'SCHEDULED').length;
+    const cancelledConsultations = consultations.filter(c => c.status === 'CANCELLED').length;
+    const consultationCompletionRate = totalConsultations > 0
+      ? Math.round((completedConsultations / totalConsultations) * 100)
+      : 100;
+
+    // Prescriptions stats
+    const totalPrescriptions = prescriptions.length;
+    const dispensedPrescriptions = prescriptions.filter(p => p.status === 'DISPENSED').length;
+    const issuedPrescriptions = prescriptions.filter(p => p.status === 'ISSUED').length;
+    const revokedPrescriptions = prescriptions.filter(p => p.status === 'REVOKED').length;
+    const signatureRate = totalPrescriptions > 0
+      ? Math.round((signedPrescriptionsCount / totalPrescriptions) * 100)
+      : 100;
+
+    // Radiology stats
+    const totalRadiology = radiologyStudies.length;
+    const completedRadiology = radiologyStudies.filter(r => r.status === 'FINALIZED').length;
+    const urgentRadiology = radiologyStudies.filter(r => r.isUrgent).length;
+    const modalityBreakdown: Record<string, number> = {};
+    for (const r of radiologyStudies) {
+      modalityBreakdown[r.modality] = (modalityBreakdown[r.modality] || 0) + 1;
+    }
+
+    // Lab stats
+    const totalLab = labOrders.length;
+    const completedLab = labOrders.filter(l => l.status === 'COMPLETED').length;
+    const criticalLab = labOrders.filter(l => l.isCritical).length;
+
+    // Triage stats
+    const totalTriage = triageAssessments.length;
+    const avgEsiScore = totalTriage > 0
+      ? Number((triageAssessments.reduce((sum, t) => sum + (t.esiScore || 3), 0) / totalTriage).toFixed(1))
+      : 3.0;
+
+    // Financial / Billing stats
+    const totalBilled = invoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+    const paidInvoices = invoices.filter(inv => inv.status === 'PAID');
+    const totalCollected = paidInvoices.reduce((sum, inv) => sum + (inv.totalAmount || 0), 0);
+    const totalPatientOutstanding = invoices.filter(inv => inv.status === 'PENDING').reduce((sum, inv) => sum + (inv.patientDue || 0), 0);
+    const totalInsuranceCovered = invoices.reduce((sum, inv) => sum + (inv.insuranceCovered || 0), 0);
+    const collectionRate = totalBilled > 0 ? Math.round((totalCollected / totalBilled) * 100) : 0;
+
+    const totalClaims = insuranceClaims.length;
+    const approvedClaims = insuranceClaims.filter(c => c.status === 'APPROVED' || c.status === 'SETTLED').length;
+    const claimApprovalRate = totalClaims > 0 ? Math.round((approvedClaims / totalClaims) * 100) : 0;
+
+    // Security & Compliance
+    const criticalViolations = violations.filter(v => v.severity === 'CRITICAL').length;
+    const unresolvedViolations = violations.filter(v => !v.resolved).length;
+    const openIncidents = incidents.filter(i => i.status !== 'CLOSED').length;
+
+    const uptimeSeconds = Math.floor(process.uptime());
+    const memUsage = process.memoryUsage();
+
+    res.json({
+      overview: {
+        totalUsers,
+        activeUsers,
+        lockedUsers,
+        roles: rolesMap,
+      },
+      clinical: {
+        totalConsultations,
+        completedConsultations,
+        inProgressConsultations,
+        scheduledConsultations,
+        cancelledConsultations,
+        completionRate: consultationCompletionRate,
+      },
+      prescriptions: {
+        totalPrescriptions,
+        dispensed: dispensedPrescriptions,
+        issued: issuedPrescriptions,
+        revoked: revokedPrescriptions,
+        signedCount: signedPrescriptionsCount,
+        signatureRate,
+      },
+      diagnostics: {
+        radiology: {
+          total: totalRadiology,
+          completed: completedRadiology,
+          urgent: urgentRadiology,
+          modalityBreakdown,
+        },
+        lab: {
+          total: totalLab,
+          completed: completedLab,
+          critical: criticalLab,
+        },
+        triage: {
+          total: totalTriage,
+          avgEsiScore,
+        },
+      },
+      financial: {
+        totalBilled,
+        totalCollected,
+        totalPatientOutstanding,
+        totalInsuranceCovered,
+        collectionRate,
+        totalClaims,
+        approvedClaims,
+        claimApprovalRate,
+      },
+      security: {
+        auditEventsCount,
+        unresolvedViolations,
+        criticalViolations,
+        alertsCount: alerts.length,
+        openIncidents,
+        invitationsCount,
+        activeInvitationsCount,
+      },
+      system: {
+        uptimeSeconds,
+        dbLatencyMs,
+        memoryRssMb: Math.round(memUsage.rss / (1024 * 1024)),
+        memoryHeapUsedMb: Math.round(memUsage.heapUsed / (1024 * 1024)),
+        nodeVersion: process.version,
+        environment: process.env.NODE_ENV || 'production',
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (err: any) {
+    console.error('Error fetching admin statistics:', err);
+    res.status(500).json({ error: 'Failed to load system-wide performance statistics' });
+  }
+});
+
 // 1. List all users
 router.get('/users', async (req, res) => {
   const users = await prisma.user.findMany({
