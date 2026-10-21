@@ -47,7 +47,8 @@ import {
   Sparkles,
   Server,
   Zap,
-  Radio
+  Radio,
+  Trash2
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -315,6 +316,37 @@ export default function AdminDashboard() {
       }
     } catch (e: any) {
       console.error(e);
+    }
+  };
+
+  // Complete and permanent user deletion
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/users/${userToDelete.id}`, {
+        method: 'DELETE',
+        headers
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage(`Permanently deleted ${userToDelete.name} (${userToDelete.email}) from the system.`);
+        setUserToDelete(null);
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 5000);
+      } else {
+        setActionMessage(data.error || 'Failed to delete user');
+        setTimeout(() => setActionMessage(null), 5000);
+      }
+    } catch (e: any) {
+      console.error('Delete user error:', e);
+      setActionMessage('Network error occurred while attempting to delete user');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -1641,6 +1673,16 @@ export default function AdminDashboard() {
                           >
                             Reset TOTP
                           </button>
+                          {u.id !== user?.id && (
+                            <button
+                              onClick={() => setUserToDelete({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email, role: u.role })}
+                              className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
+                              title="Permanently delete user and all associated records"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -1765,6 +1807,14 @@ export default function AdminDashboard() {
                               title="Reset 2FA TOTP secret"
                             >
                               Reset TOTP
+                            </button>
+                            <button
+                              onClick={() => setUserToDelete({ id: p.id, name: `${p.firstName} ${p.lastName}`, email: p.email, role: p.role })}
+                              className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
+                              title="Permanently delete patient and purge records from system"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
                             </button>
                           </td>
                         </tr>
@@ -2217,6 +2267,70 @@ export default function AdminDashboard() {
         isOpen={show2FAModal}
         onClose={() => setShow2FAModal(false)}
       />
+
+      {/* Permanent User Deletion Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border border-red-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Permanently Delete Person</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  You are about to completely purge this user account from the TeleMedSecure database.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Target Person:</span>
+                <span className="text-white font-bold">{userToDelete.name}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Email:</span>
+                <span className="text-cyan-400 font-mono">{userToDelete.email}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">System Role:</span>
+                <span className="text-purple-300 font-mono font-bold">{userToDelete.role}</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <strong className="block text-red-200">Irreversible Action:</strong>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  This will permanently delete this person, purge associated clinical consultations, station logs, invoices, and prescriptions, while sanitizing audit trail linkages. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={() => setUserToDelete(null)}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={confirmDeleteUser}
+                className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition shadow-lg shadow-red-600/30 flex items-center space-x-2 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isDeletingUser ? 'Purging Person...' : 'Confirm Permanent Deletion'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

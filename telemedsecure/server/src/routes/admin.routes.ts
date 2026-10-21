@@ -448,5 +448,115 @@ router.post('/users/:id/totp', async (req, res) => {
   res.json({ message: 'TOTP secret generated', secret });
 });
 
+// 8. Completely and permanently delete any user from the system
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const adminUser = (req as any).user;
+    const targetId = req.params.id;
+
+    if (targetId === adminUser.id) {
+      return res.status(400).json({ error: 'Security restriction: Administrators cannot delete their own active account.' });
+    }
+
+    const target = await prisma.user.findUnique({ where: { id: targetId } });
+    if (!target) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Clear administrative references to avoid foreign key errors
+      await tx.user.updateMany({ where: { createdById: targetId }, data: { createdById: null } });
+      await tx.user.updateMany({ where: { verifiedById: targetId }, data: { verifiedById: null } });
+      await tx.staffInvitation.deleteMany({ where: { invitedById: targetId } });
+
+      // 2. Anonymize user in chained audit logs to preserve cryptographic block hashes
+      await tx.auditEvent.updateMany({ where: { userId: targetId }, data: { userId: null } });
+
+      // 3. Delete patient GDPR, medical, consent & insurance records
+      await tx.consent.deleteMany({ where: { patientId: targetId } });
+      await tx.erasureRequest.deleteMany({ where: { userId: targetId } });
+      await tx.medicalRecord.deleteMany({ where: { patientId: targetId } });
+      await tx.clinicalFlag.deleteMany({ where: { patientId: targetId } });
+      await tx.insuranceEligibility.deleteMany({ where: { patientId: targetId } });
+
+      // 4. Delete patient invoices, invoice items, and payments
+      const patientInvoices = await tx.invoice.findMany({ where: { patientId: targetId }, select: { id: true } });
+      const pInvIds = patientInvoices.map(i => i.id);
+      if (pInvIds.length > 0) {
+        await tx.insuranceClaim.deleteMany({ where: { invoiceId: { in: pInvIds } } });
+        await tx.billingPayment.deleteMany({ where: { invoiceId: { in: pInvIds } } });
+        await tx.invoiceItem.deleteMany({ where: { invoiceId: { in: pInvIds } } });
+        await tx.invoice.deleteMany({ where: { id: { in: pInvIds } } });
+      }
+      await tx.insuranceClaim.deleteMany({ where: { patientId: targetId } });
+
+      // 5. Delete station orders where user is patient or staff
+      await tx.labOrder.deleteMany({ where: { OR: [{ patientId: targetId }, { technicianId: targetId }] } });
+      await tx.radiologyStudy.deleteMany({ where: { OR: [{ patientId: targetId }, { radiologistId: targetId }] } });
+      await tx.triageAssessment.deleteMany({ where: { OR: [{ patientId: targetId }, { officerId: targetId }] } });
+      await tx.carePlan.deleteMany({ where: { OR: [{ patientId: targetId }, { coordinatorId: targetId }] } });
+
+      // 6. Delete prescriptions authored by doctor (with items & signatures)
+      const docPrescriptions = await tx.prescription.findMany({ where: { doctorId: targetId }, select: { id: true } });
+      const docRxIds = docPrescriptions.map(p => p.id);
+      if (docRxIds.length > 0) {
+        await tx.prescriptionItem.deleteMany({ where: { prescriptionId: { in: docRxIds } } });
+        await tx.digitalSignature.deleteMany({ where: { prescriptionId: { in: docRxIds } } });
+        await tx.prescription.deleteMany({ where: { id: { in: docRxIds } } });
+      }
+
+      // 7. Delete consultations where user is patient or doctor (with vitals, sub-invoices, and notes)
+      const consultations = await tx.consultation.findMany({
+        where: { OR: [{ patientId: targetId }, { doctorId: targetId }] },
+        select: { id: true }
+      });
+      const cIds = consultations.map(c => c.id);
+      if (cIds.length > 0) {
+        const cRx = await tx.prescription.findMany({ where: { consultationId: { in: cIds } }, select: { id: true } });
+        const cRxIds = cRx.map(p => p.id);
+        if (cRxIds.length > 0) {
+          await tx.prescriptionItem.deleteMany({ where: { prescriptionId: { in: cRxIds } } });
+          await tx.digitalSignature.deleteMany({ where: { prescriptionId: { in: cRxIds } } });
+          await tx.prescription.deleteMany({ where: { id: { in: cRxIds } } });
+        }
+        await tx.vitalSign.deleteMany({ where: { consultationId: { in: cIds } } });
+        await tx.clinicalFlag.deleteMany({ where: { consultationId: { in: cIds } } });
+        await tx.labOrder.deleteMany({ where: { consultationId: { in: cIds } } });
+        await tx.radiologyStudy.deleteMany({ where: { consultationId: { in: cIds } } });
+        await tx.triageAssessment.deleteMany({ where: { consultationId: { in: cIds } } });
+
+        const cInvoices = await tx.invoice.findMany({ where: { consultationId: { in: cIds } }, select: { id: true } });
+        const cInvIds = cInvoices.map(i => i.id);
+        if (cInvIds.length > 0) {
+          await tx.insuranceClaim.deleteMany({ where: { invoiceId: { in: cInvIds } } });
+          await tx.billingPayment.deleteMany({ where: { invoiceId: { in: cInvIds } } });
+          await tx.invoiceItem.deleteMany({ where: { invoiceId: { in: cInvIds } } });
+          await tx.invoice.deleteMany({ where: { id: { in: cInvIds } } });
+        }
+
+        await tx.consultation.deleteMany({ where: { id: { in: cIds } } });
+      }
+
+      // 8. Permanently delete the User record
+      await tx.user.delete({ where: { id: targetId } });
+    });
+
+    await logAudit(
+      'USER_PURGED_PERMANENTLY',
+      `USER:${target.email}:${target.role}`,
+      adminUser.id,
+      req.ip
+    );
+
+    res.json({
+      message: `User ${target.firstName} ${target.lastName} (${target.email} - ${target.role}) and all associated records have been permanently deleted from the system.`,
+      deletedUserId: targetId,
+    });
+  } catch (err: any) {
+    console.error('Error permanently deleting user:', err);
+    res.status(500).json({ error: `Failed to delete user: ${err.message || 'Database error'}` });
+  }
+});
+
 export default router;
 
