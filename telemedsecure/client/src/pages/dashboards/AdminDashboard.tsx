@@ -48,7 +48,8 @@ import {
   Server,
   Zap,
   Radio,
-  Trash2
+  Trash2,
+  CheckSquare
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -323,6 +324,32 @@ export default function AdminDashboard() {
   const [userToDelete, setUserToDelete] = useState<{ id: string; name: string; email: string; role: string } | null>(null);
   const [isDeletingUser, setIsDeletingUser] = useState(false);
 
+  // Multi-select batch deletion state
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [isBatchDeleting, setIsBatchDeleting] = useState(false);
+  const [showBatchDeleteModal, setShowBatchDeleteModal] = useState(false);
+
+  const toggleSelectUser = (id: string) => {
+    if (id === user?.id) return;
+    setSelectedUserIds(prev =>
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const toggleSelectAll = (targetList: any[]) => {
+    const selectable = targetList
+      .filter(u => u.id !== user?.id)
+      .map(u => u.id);
+    if (selectable.length === 0) return;
+
+    const allSelected = selectable.every(id => selectedUserIds.includes(id));
+    if (allSelected) {
+      setSelectedUserIds(prev => prev.filter(id => !selectable.includes(id)));
+    } else {
+      setSelectedUserIds(prev => Array.from(new Set([...prev, ...selectable])));
+    }
+  };
+
   const confirmDeleteUser = async () => {
     if (!userToDelete) return;
     setIsDeletingUser(true);
@@ -335,6 +362,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (res.ok) {
         setActionMessage(`Permanently deleted ${userToDelete.name} (${userToDelete.email}) from the system.`);
+        setSelectedUserIds(prev => prev.filter(id => id !== userToDelete.id));
         setUserToDelete(null);
         fetchAllAdminData();
         setTimeout(() => setActionMessage(null), 5000);
@@ -347,6 +375,38 @@ export default function AdminDashboard() {
       setActionMessage('Network error occurred while attempting to delete user');
     } finally {
       setIsDeletingUser(false);
+    }
+  };
+
+  const confirmBatchDelete = async () => {
+    if (selectedUserIds.length === 0) return;
+    setIsBatchDeleting(true);
+    try {
+      const headers = getAuthHeaders();
+      const res = await fetch(`${API_BASE}/admin/users/batch-delete`, {
+        method: 'POST',
+        headers: {
+          ...headers,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ userIds: selectedUserIds })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setActionMessage(data.message || `Permanently deleted ${data.deletedCount || selectedUserIds.length} users from the system.`);
+        setSelectedUserIds([]);
+        setShowBatchDeleteModal(false);
+        fetchAllAdminData();
+        setTimeout(() => setActionMessage(null), 5000);
+      } else {
+        setActionMessage(data.error || 'Failed to batch delete users');
+        setTimeout(() => setActionMessage(null), 5000);
+      }
+    } catch (e: any) {
+      console.error('Batch delete error:', e);
+      setActionMessage('Network error occurred while attempting batch delete');
+    } finally {
+      setIsBatchDeleting(false);
     }
   };
 
@@ -1585,16 +1645,46 @@ export default function AdminDashboard() {
 
             {/* 3. Clinical Workstation User Directory */}
             <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 shadow-lg overflow-hidden">
-              <div className="p-4 border-b border-slate-700 bg-slate-900/40 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Active Clinical Workstation User Directory
-                </h3>
-                <span className="text-xs text-slate-400 font-mono">{usersList.length} Accounts Enrolled</span>
+              <div className="p-4 border-b border-slate-700 bg-slate-900/40 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Active Clinical Workstation User Directory
+                  </h3>
+                  {selectedUserIds.length > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {selectedUserIds.length} Selected
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-3">
+                  {selectedUserIds.length > 0 && (
+                    <button
+                      onClick={() => setShowBatchDeleteModal(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition active:scale-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedUserIds.length})</span>
+                    </button>
+                  )}
+                  <span className="text-xs text-slate-400 font-mono">{usersList.length} Accounts Enrolled</span>
+                </div>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead className="bg-slate-900/70 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-700">
                     <tr>
+                      <th className="px-4 py-4 w-12 text-center">
+                        <input
+                          type="checkbox"
+                          checked={
+                            usersList.filter(u => u.id !== user?.id).length > 0 &&
+                            usersList.filter(u => u.id !== user?.id).every(u => selectedUserIds.includes(u.id))
+                          }
+                          onChange={() => toggleSelectAll(usersList)}
+                          className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
+                          title="Select / Deselect all eligible workstation users"
+                        />
+                      </th>
                       <th className="px-6 py-4">User</th>
                       <th className="px-6 py-4">Role Assignment</th>
                       <th className="px-6 py-4">Credential Status</th>
@@ -1603,89 +1693,108 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/60">
-                    {usersList.map(u => (
-                      <tr key={u.id} className="hover:bg-slate-700/30 transition">
-                        <td className="px-6 py-4">
-                          <div className="font-bold text-white text-sm">{u.firstName} {u.lastName}</div>
-                          <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
-                          {u.medicalLicenseNo && (
-                            <div className="text-[10px] text-cyan-400 font-mono mt-0.5">
-                              License: {u.medicalLicenseNo} ({u.specialty || 'General'})
-                            </div>
-                          )}
-                        </td>
+                    {usersList.map(u => {
+                      const isSelected = selectedUserIds.includes(u.id);
+                      return (
+                        <tr
+                          key={u.id}
+                          className={`transition ${isSelected ? 'bg-purple-950/25 border-l-2 border-purple-500 hover:bg-purple-950/35' : 'hover:bg-slate-700/30'}`}
+                        >
+                          <td className="px-4 py-4 w-12 text-center">
+                            {u.id !== user?.id ? (
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectUser(u.id)}
+                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
+                                title={`Select ${u.firstName} ${u.lastName}`}
+                              />
+                            ) : (
+                              <span className="text-[10px] text-slate-500 font-mono" title="Cannot delete current administrator session">You</span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-white text-sm">{u.firstName} {u.lastName}</div>
+                            <div className="text-slate-400 font-mono text-[11px]">{u.email}</div>
+                            {u.medicalLicenseNo && (
+                              <div className="text-[10px] text-cyan-400 font-mono mt-0.5">
+                                License: {u.medicalLicenseNo} ({u.specialty || 'General'})
+                              </div>
+                            )}
+                          </td>
 
-                        <td className="px-6 py-4">
-                          <select
-                            value={u.role}
-                            onChange={e => handleChangeRole(u.id, e.target.value as UserRole)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono font-semibold text-white focus:outline-none focus:border-purple-500"
-                          >
-                            <option value="PATIENT">PATIENT</option>
-                            <option value="DOCTOR">DOCTOR</option>
-                            <option value="NURSE">NURSE</option>
-                            <option value="PHARMACIST">PHARMACIST</option>
-                            <option value="LAB_TECHNICIAN">LAB_TECHNICIAN</option>
-                            <option value="RADIOLOGIST">RADIOLOGIST</option>
-                            <option value="BILLING_OFFICER">BILLING_OFFICER</option>
-                            <option value="TRIAGE_OFFICER">TRIAGE_OFFICER</option>
-                            <option value="CARE_COORDINATOR">CARE_COORDINATOR</option>
-                            <option value="RECEPTIONIST">RECEPTIONIST</option>
-                            <option value="ADMIN">ADMIN</option>
-                          </select>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold ${
-                            u.verificationStatus === 'VERIFIED'
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : u.verificationStatus === 'PENDING_REVIEW'
-                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                          }`}>
-                            {u.verificationStatus || 'VERIFIED'}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${u.isActive
-                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                            }`}>
-                            {u.isActive ? 'ACTIVE' : 'SUSPENDED'}
-                          </span>
-                        </td>
-
-                        <td className="px-6 py-4 text-right space-x-2">
-                          <button
-                            onClick={() => handleToggleUserStatus(u.id, u.isActive)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${u.isActive
-                              ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
-                              : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
-                              }`}
-                          >
-                            {u.isActive ? 'Suspend' : 'Activate'}
-                          </button>
-                          <button
-                            onClick={() => handleResetTotp(u.id)}
-                            className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition"
-                            title="Reset 2FA TOTP secret"
-                          >
-                            Reset TOTP
-                          </button>
-                          {u.id !== user?.id && (
-                            <button
-                              onClick={() => setUserToDelete({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email, role: u.role })}
-                              className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
-                              title="Permanently delete user and all associated records"
+                          <td className="px-6 py-4">
+                            <select
+                              value={u.role}
+                              onChange={e => handleChangeRole(u.id, e.target.value as UserRole)}
+                              className="px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-700 text-xs font-mono font-semibold text-white focus:outline-none focus:border-purple-500"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
+                              <option value="PATIENT">PATIENT</option>
+                              <option value="DOCTOR">DOCTOR</option>
+                              <option value="NURSE">NURSE</option>
+                              <option value="PHARMACIST">PHARMACIST</option>
+                              <option value="LAB_TECHNICIAN">LAB_TECHNICIAN</option>
+                              <option value="RADIOLOGIST">RADIOLOGIST</option>
+                              <option value="BILLING_OFFICER">BILLING_OFFICER</option>
+                              <option value="TRIAGE_OFFICER">TRIAGE_OFFICER</option>
+                              <option value="CARE_COORDINATOR">CARE_COORDINATOR</option>
+                              <option value="RECEPTIONIST">RECEPTIONIST</option>
+                              <option value="ADMIN">ADMIN</option>
+                            </select>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold ${
+                              u.verificationStatus === 'VERIFIED'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : u.verificationStatus === 'PENDING_REVIEW'
+                                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
+                                  : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                            }`}>
+                              {u.verificationStatus || 'VERIFIED'}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${u.isActive
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                              }`}>
+                              {u.isActive ? 'ACTIVE' : 'SUSPENDED'}
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4 text-right space-x-2">
+                            <button
+                              onClick={() => handleToggleUserStatus(u.id, u.isActive)}
+                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${u.isActive
+                                ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
+                                : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
+                                }`}
+                            >
+                              {u.isActive ? 'Suspend' : 'Activate'}
                             </button>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
+                            <button
+                              onClick={() => handleResetTotp(u.id)}
+                              className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition"
+                              title="Reset 2FA TOTP secret"
+                            >
+                              Reset TOTP
+                            </button>
+                            {u.id !== user?.id && (
+                              <button
+                                onClick={() => setUserToDelete({ id: u.id, name: `${u.firstName} ${u.lastName}`, email: u.email, role: u.role })}
+                                className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
+                                title="Permanently delete user and all associated records"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1737,11 +1846,29 @@ export default function AdminDashboard() {
 
             {/* Patients Table */}
             <div className="bg-slate-800/80 rounded-3xl border border-slate-700/80 shadow-lg overflow-hidden">
-              <div className="p-4 border-b border-slate-700 bg-slate-900/40 flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                  Enrolled Patient Directory
-                </h3>
-                <span className="text-xs text-slate-400 font-mono">{patientCount} Patients</span>
+              <div className="p-4 border-b border-slate-700 bg-slate-900/40 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center space-x-3">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">
+                    Enrolled Patient Directory
+                  </h3>
+                  {selectedUserIds.length > 0 && (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      {selectedUserIds.length} Selected
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center space-x-3">
+                  {selectedUserIds.length > 0 && (
+                    <button
+                      onClick={() => setShowBatchDeleteModal(true)}
+                      className="px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition active:scale-95"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Selected ({selectedUserIds.length})</span>
+                    </button>
+                  )}
+                  <span className="text-xs text-slate-400 font-mono">{patientCount} Patients</span>
+                </div>
               </div>
 
               {patientCount === 0 ? (
@@ -1754,6 +1881,18 @@ export default function AdminDashboard() {
                   <table className="w-full text-left text-xs">
                     <thead className="bg-slate-900/70 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-700">
                       <tr>
+                        <th className="px-4 py-4 w-12 text-center">
+                          <input
+                            type="checkbox"
+                            checked={
+                              usersList.filter(u => u.role === 'PATIENT' && u.id !== user?.id).length > 0 &&
+                              usersList.filter(u => u.role === 'PATIENT' && u.id !== user?.id).every(p => selectedUserIds.includes(p.id))
+                            }
+                            onChange={() => toggleSelectAll(usersList.filter(u => u.role === 'PATIENT'))}
+                            className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
+                            title="Select / Deselect all patients"
+                          />
+                        </th>
                         <th className="px-6 py-4">Patient Name & Contact</th>
                         <th className="px-6 py-4">Record Identifier</th>
                         <th className="px-6 py-4">Security & 2FA Status</th>
@@ -1762,63 +1901,78 @@ export default function AdminDashboard() {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-700/60">
-                      {usersList.filter(u => u.role === 'PATIENT').map(p => (
-                        <tr key={p.id} className="hover:bg-slate-700/30 transition">
-                          <td className="px-6 py-4">
-                            <div className="font-bold text-white text-sm">{p.firstName} {p.lastName}</div>
-                            <div className="text-slate-400 font-mono text-[11px]">{p.email}</div>
-                          </td>
+                      {usersList.filter(u => u.role === 'PATIENT').map(p => {
+                        const isSelected = selectedUserIds.includes(p.id);
+                        return (
+                          <tr
+                            key={p.id}
+                            className={`transition ${isSelected ? 'bg-purple-950/25 border-l-2 border-purple-500 hover:bg-purple-950/35' : 'hover:bg-slate-700/30'}`}
+                          >
+                            <td className="px-4 py-4 w-12 text-center">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => toggleSelectUser(p.id)}
+                                className="w-4 h-4 rounded bg-slate-900 border-slate-700 text-purple-600 focus:ring-purple-500 focus:ring-offset-slate-900 cursor-pointer"
+                                title={`Select ${p.firstName} ${p.lastName}`}
+                              />
+                            </td>
+                            <td className="px-6 py-4">
+                              <div className="font-bold text-white text-sm">{p.firstName} {p.lastName}</div>
+                              <div className="text-slate-400 font-mono text-[11px]">{p.email}</div>
+                            </td>
 
-                          <td className="px-6 py-4">
-                            <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 font-mono text-[11px] text-cyan-400">
-                              UID-{p.id.substring(0, 8)}
-                            </span>
-                          </td>
+                            <td className="px-6 py-4">
+                              <span className="px-2.5 py-1 rounded bg-slate-900 border border-slate-800 font-mono text-[11px] text-cyan-400">
+                                UID-{p.id.substring(0, 8)}
+                              </span>
+                            </td>
 
-                          <td className="px-6 py-4">
-                            <div className="flex items-center space-x-1.5 text-slate-300">
-                              <Key className="w-3.5 h-3.5 text-purple-400" />
-                              <span>{p.isTotpEnabled ? '2FA TOTP Active' : 'Password Only'}</span>
-                            </div>
-                          </td>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center space-x-1.5 text-slate-300">
+                                <Key className="w-3.5 h-3.5 text-purple-400" />
+                                <span>{p.isTotpEnabled ? '2FA TOTP Active' : 'Password Only'}</span>
+                              </div>
+                            </td>
 
-                          <td className="px-6 py-4">
-                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${p.isActive
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                              }`}>
-                              {p.isActive ? 'ACTIVE' : 'SUSPENDED'}
-                            </span>
-                          </td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-semibold ${p.isActive
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                                }`}>
+                                {p.isActive ? 'ACTIVE' : 'SUSPENDED'}
+                              </span>
+                            </td>
 
-                          <td className="px-6 py-4 text-right space-x-2">
-                            <button
-                              onClick={() => handleToggleUserStatus(p.id, p.isActive)}
-                              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${p.isActive
-                                ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
-                                : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
-                                }`}
-                            >
-                              {p.isActive ? 'Suspend' : 'Activate'}
-                            </button>
-                            <button
-                              onClick={() => handleResetTotp(p.id)}
-                              className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition"
-                              title="Reset 2FA TOTP secret"
-                            >
-                              Reset TOTP
-                            </button>
-                            <button
-                              onClick={() => setUserToDelete({ id: p.id, name: `${p.firstName} ${p.lastName}`, email: p.email, role: p.role })}
-                              className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
-                              title="Permanently delete patient and purge records from system"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Delete</span>
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                            <td className="px-6 py-4 text-right space-x-2">
+                              <button
+                                onClick={() => handleToggleUserStatus(p.id, p.isActive)}
+                                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${p.isActive
+                                  ? 'bg-red-600/20 text-red-300 border border-red-500/30 hover:bg-red-600/40'
+                                  : 'bg-emerald-600/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-600/40'
+                                  }`}
+                              >
+                                {p.isActive ? 'Suspend' : 'Activate'}
+                              </button>
+                              <button
+                                onClick={() => handleResetTotp(p.id)}
+                                className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-semibold transition"
+                                title="Reset 2FA TOTP secret"
+                              >
+                                Reset TOTP
+                              </button>
+                              <button
+                                onClick={() => setUserToDelete({ id: p.id, name: `${p.firstName} ${p.lastName}`, email: p.email, role: p.role })}
+                                className="px-3 py-1.5 rounded-xl bg-red-600/20 text-red-400 border border-red-500/30 hover:bg-red-600 hover:text-white text-xs font-semibold transition inline-flex items-center space-x-1"
+                                title="Permanently delete patient and purge records from system"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Delete</span>
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -2326,6 +2480,119 @@ export default function AdminDashboard() {
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{isDeletingUser ? 'Purging Person...' : 'Confirm Permanent Deletion'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bulk Action Bar */}
+      {selectedUserIds.length > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 backdrop-blur-xl border border-purple-500/50 shadow-2xl shadow-purple-950/80 rounded-2xl px-5 py-3.5 flex items-center gap-4 text-white animate-fadeIn max-w-xl w-[92%] sm:w-auto">
+          <div className="flex items-center space-x-2 text-xs sm:text-sm">
+            <div className="w-7 h-7 rounded-lg bg-purple-500/20 text-purple-300 border border-purple-500/40 flex items-center justify-center font-bold font-mono text-xs">
+              {selectedUserIds.length}
+            </div>
+            <span className="font-semibold text-slate-200">
+              {selectedUserIds.length === 1 ? '1 user selected' : `${selectedUserIds.length} users selected`}
+            </span>
+          </div>
+
+          <div className="h-5 w-px bg-slate-700 hidden sm:block" />
+
+          <div className="flex items-center space-x-2 ml-auto sm:ml-0">
+            <button
+              onClick={() => setShowBatchDeleteModal(true)}
+              className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs shadow-lg shadow-red-600/30 flex items-center space-x-1.5 transition active:scale-95"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected</span>
+            </button>
+
+            <button
+              onClick={() => setSelectedUserIds([])}
+              className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs border border-slate-700 transition"
+            >
+              Clear
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Batch User Deletion Confirmation Modal */}
+      {showBatchDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="bg-slate-900 border border-red-500/40 rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl space-y-6">
+            <div className="flex items-start space-x-4">
+              <div className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-white">Permanently Delete Multiple People</h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  You are about to completely purge <span className="text-red-400 font-bold">{selectedUserIds.length} accounts</span> and their associated clinical records from the database.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-3 text-xs">
+              <div className="flex justify-between items-center pb-2 border-b border-slate-800">
+                <span className="text-slate-400 font-medium">Selected Accounts ({selectedUserIds.length}):</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedUserIds([]);
+                    setShowBatchDeleteModal(false);
+                  }}
+                  className="text-slate-400 hover:text-white transition text-[11px]"
+                >
+                  Clear Selection
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-2 pr-1 divide-y divide-slate-800/60">
+                {usersList
+                  .filter(u => selectedUserIds.includes(u.id))
+                  .map(u => (
+                    <div key={u.id} className="pt-2 first:pt-0 flex items-center justify-between text-[11px]">
+                      <div className="truncate mr-2">
+                        <span className="font-semibold text-white">{u.firstName} {u.lastName}</span>
+                        <span className="text-slate-400 ml-1.5 font-mono text-[10px]">({u.email})</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-500/10 text-purple-300 border border-purple-500/20 shrink-0">
+                        {u.role}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-start space-x-2.5">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <strong className="block text-red-200">Mass Cascading Record Purge:</strong>
+                <p className="text-slate-300 leading-relaxed text-[11px]">
+                  This operation will permanently erase these {selectedUserIds.length} individuals, purge all associated clinical consultations, diagnostic station orders, lab tests, PACS studies, prescriptions, and billing invoices. Chained audit log hashes will be maintained with anonymized user linkage. This action cannot be reversed.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end space-x-3 pt-2">
+              <button
+                type="button"
+                disabled={isBatchDeleting}
+                onClick={() => setShowBatchDeleteModal(false)}
+                className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isBatchDeleting}
+                onClick={confirmBatchDelete}
+                className="px-6 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs transition shadow-lg shadow-red-600/30 flex items-center space-x-2 disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{isBatchDeleting ? `Purging ${selectedUserIds.length} Accounts...` : `Confirm Delete (${selectedUserIds.length})`}</span>
               </button>
             </div>
           </div>
