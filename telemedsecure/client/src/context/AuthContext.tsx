@@ -96,7 +96,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const res = await fetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password, totp })
+        body: JSON.stringify({ email, password })
       });
       console.log('Login response status:', res.status, res.statusText);
       if (!res.ok) {

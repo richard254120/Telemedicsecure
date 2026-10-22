@@ -331,18 +331,6 @@ router.post('/login', async (req, res) => {
     return invalidResponse();
   }
 
-  // TOTP check if enabled
-  if (user.totpSecret && !totp) {
-    return res.status(401).json({ error: 'Two-factor authenticator code required', requires2FA: true });
-  }
-  if (user.totpSecret && totp) {
-    const isValid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: String(totp).trim(), window: 1 });
-    if (!isValid) {
-      await logAudit('LOGIN_FAILURE_TOTP', 'AUTH', user.id, req.ip);
-      return invalidResponse();
-    }
-  }
-
   // Reset failed attempts on success
   await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
   rulesEngine.resetFailedLogins(user.email);
