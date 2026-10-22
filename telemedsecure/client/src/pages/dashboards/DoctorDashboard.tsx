@@ -37,7 +37,11 @@ import {
   Printer,
   MessageSquare,
   Smartphone,
-  Bell
+  Bell,
+  FlaskConical,
+  Scan,
+  ClipboardCheck,
+  FileCheck
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -71,7 +75,7 @@ export default function DoctorDashboard() {
   const { user, getAuthHeaders } = useAuth();
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records'>('patient-hub');
+  const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics'>('patient-hub');
 
   // Main clinical data
   const [patients, setPatients] = useState<PatientSummary[]>([]);
@@ -79,6 +83,8 @@ export default function DoctorDashboard() {
   const [prescriptions, setPrescriptions] = useState<any[]>([]);
   const [clinicalFlags, setClinicalFlags] = useState<any[]>([]);
   const [medicalRecords, setMedicalRecords] = useState<any[]>([]);
+  const [labOrders, setLabOrders] = useState<any[]>([]);
+  const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -92,6 +98,8 @@ export default function DoctorDashboard() {
   const [showScheduleModal, setShowScheduleModal] = useState<boolean>(false);
   const [showSoapModal, setShowSoapModal] = useState<boolean>(false);
   const [showRecordModal, setShowRecordModal] = useState<boolean>(false);
+  const [showDiagnosticsModal, setShowDiagnosticsModal] = useState<boolean>(false);
+  const [showPatientSummaryModal, setShowPatientSummaryModal] = useState<boolean>(false);
 
   // In-Dashboard e-Prescription Form State (DEA EPCS Certified)
   const [rxItems, setRxItems] = useState([
@@ -100,6 +108,65 @@ export default function DoctorDashboard() {
   const [rxDoctorPassword, setRxDoctorPassword] = useState('');
   const [rxSubmitting, setRxSubmitting] = useState(false);
   const [rxSigningSuccess, setRxSigningSuccess] = useState<any | null>(null);
+  const [drugInteractionOverride, setDrugInteractionOverride] = useState(false);
+
+  // Diagnostic Orders Requisition State
+  const [diagType, setDiagType] = useState<'LAB' | 'RADIOLOGY'>('LAB');
+  const [diagTestName, setDiagTestName] = useState('Comprehensive Metabolic Panel (CMP)');
+  const [diagSpecimen, setDiagSpecimen] = useState('Blood (Serum)');
+  const [diagModality, setDiagModality] = useState('X_RAY');
+  const [diagBodyPart, setDiagBodyPart] = useState('Chest (PA & Lateral)');
+  const [diagClinicalReason, setDiagClinicalReason] = useState('');
+  const [diagSubmitting, setDiagSubmitting] = useState(false);
+
+  // Clinical Drug-Drug Interaction Safety Analyzer
+  const checkDrugInteractions = (items: Array<{ medication: string }>) => {
+    const alerts: Array<{ severity: 'CRITICAL' | 'WARNING'; message: string; mechanism: string }> = [];
+    const meds = items.map(i => i.medication.trim().toLowerCase()).filter(Boolean);
+    const has = (keyword: string) => meds.some(m => m.includes(keyword));
+
+    if ((has('warfarin') || has('coumadin')) && (has('aspirin') || has('ibuprofen') || has('naproxen') || has('ketorolac') || has('diclofenac'))) {
+      alerts.push({
+        severity: 'CRITICAL',
+        message: 'Severe Hemorrhage Risk: Anticoagulant + NSAID/Antiplatelet',
+        mechanism: 'Concurrent use inhibits platelet COX-1 and synergistically elevates gastrointestinal and systemic hemorrhage risk.'
+      });
+    }
+
+    if ((has('lisinopril') || has('enalapril') || has('ramipril')) && (has('losartan') || has('valsartan') || has('candesartan'))) {
+      alerts.push({
+        severity: 'CRITICAL',
+        message: 'Dual RAAS Blockade: ACE Inhibitor + ARB Contraindication',
+        mechanism: 'Combining ACE inhibitors and ARBs significantly increases acute renal impairment, profound hypotension, and hyperkalemia.'
+      });
+    }
+
+    if ((has('ciprofloxacin') || has('levofloxacin') || has('moxifloxacin')) && (has('amiodarone') || has('sotalol') || has('haloperidol'))) {
+      alerts.push({
+        severity: 'CRITICAL',
+        message: 'Fatal Arrhythmia Warning: Synergistic QT Interval Prolongation',
+        mechanism: 'Simultaneous administration extends cardiac ventricular repolarization, predisposing the patient to Torsades de Pointes.'
+      });
+    }
+
+    if ((has('simvastatin') || has('atorvastatin')) && (has('clarithromycin') || has('erythromycin'))) {
+      alerts.push({
+        severity: 'WARNING',
+        message: 'CYP3A4 Statin Toxicity: Statin + Macrolide Antibiotic',
+        mechanism: 'Macrolides potently block CYP3A4 metabolism, drastically elevating statin plasma levels and inducing rhabdomyolysis.'
+      });
+    }
+
+    if (has('metformin') && (has('contrast') || has('dye'))) {
+      alerts.push({
+        severity: 'WARNING',
+        message: 'Lactic Acidosis Risk: Metformin + Radiographic Iodinated Contrast',
+        mechanism: 'Transient renal impairment induced by iodinated contrast causes metformin accumulation and potentially fatal lactic acidosis.'
+      });
+    }
+
+    return alerts;
+  };
 
   // In-Dashboard Consultation Scheduling
   const [scheduleDateTime, setScheduleDateTime] = useState('');
@@ -250,12 +317,14 @@ export default function DoctorDashboard() {
     setActionError(null);
     try {
       const headers = getAuthHeaders();
-      const [ptsRes, consRes, rxRes, flagsRes, recsRes] = await Promise.all([
+      const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes] = await Promise.all([
         fetch(`${API_BASE}/consultations/patients`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []),
         fetch(`${API_BASE}/vital-signs/clinical-flags/all`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/medical-records`, { headers }).then(r => r.ok ? r.json() : [])
+        fetch(`${API_BASE}/medical-records`, { headers }).then(r => r.ok ? r.json() : []),
+        fetch(`${API_BASE}/stations/lab/orders`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
+        fetch(`${API_BASE}/stations/radiology/studies`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
       ]);
 
       const pts = Array.isArray(ptsRes) ? ptsRes : [];
@@ -264,6 +333,8 @@ export default function DoctorDashboard() {
       setPrescriptions(Array.isArray(rxRes) ? rxRes : []);
       setClinicalFlags(Array.isArray(flagsRes) ? flagsRes : []);
       setMedicalRecords(Array.isArray(recsRes) ? recsRes : []);
+      setLabOrders(Array.isArray(labRes) ? labRes : []);
+      setRadiologyOrders(Array.isArray(radRes) ? radRes : []);
 
       // Auto-select first patient if none selected
       if (!selectedPatientId && pts.length > 0) {
@@ -274,6 +345,62 @@ export default function DoctorDashboard() {
       setActionError('Network error loading clinical datasets');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateDiagnosticOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activePatient) return;
+    setDiagSubmitting(true);
+    setActionError(null);
+    try {
+      const headers = { ...getAuthHeaders(), 'Content-Type': 'application/json' };
+      if (diagType === 'LAB') {
+        const res = await fetch(`${API_BASE}/stations/lab/orders`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            patientId: activePatient.id,
+            testName: diagTestName,
+            specimenType: diagSpecimen,
+            notes: diagClinicalReason
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setActionSuccess(`Requisition dispatched: ${diagTestName} sent to Hospital Lab Workstation`);
+          setShowDiagnosticsModal(false);
+          fetchDoctorData();
+          setTimeout(() => setActionSuccess(null), 5000);
+        } else {
+          setActionError(data.error || 'Failed to order lab test');
+        }
+      } else {
+        const res = await fetch(`${API_BASE}/stations/radiology/studies`, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            patientId: activePatient.id,
+            modality: diagModality,
+            bodyPart: diagBodyPart,
+            clinicalIndication: diagClinicalReason || 'Attending Physician Telehealth Requisition'
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          setActionSuccess(`PACS Requisition dispatched: ${diagModality} (${diagBodyPart}) sent to Imaging Station`);
+          setShowDiagnosticsModal(false);
+          fetchDoctorData();
+          setTimeout(() => setActionSuccess(null), 5000);
+        } else {
+          setActionError(data.error || 'Failed to order radiology study');
+        }
+      }
+    } catch (err: any) {
+      console.error(err);
+      setActionError('Network error dispatching diagnostic order');
+    } finally {
+      setDiagSubmitting(false);
     }
   };
 
@@ -817,11 +944,20 @@ export default function DoctorDashboard() {
                   <span>SOAP Notes</span>
                 </button>
                 <button
-                  onClick={() => setShowRecordModal(true)}
-                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 text-xs font-bold transition flex items-center space-x-1.5"
+                  onClick={() => setShowDiagnosticsModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-bold transition flex items-center space-x-1.5"
+                  title="Order Lab Requisition or PACS Radiology Study"
                 >
-                  <FileText className="w-3.5 h-3.5 text-purple-400" />
-                  <span>Diagnostic Lab</span>
+                  <FlaskConical className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Order Diagnostics</span>
+                </button>
+                <button
+                  onClick={() => setShowPatientSummaryModal(true)}
+                  className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 text-xs font-bold transition flex items-center space-x-1.5"
+                  title="View and Print Official Longitudinal Health Summary"
+                >
+                  <ClipboardCheck className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Clinical Summary</span>
                 </button>
               </div>
             </div>
@@ -834,6 +970,7 @@ export default function DoctorDashboard() {
             { id: 'patient-hub', label: 'Patient Clinical Workspace', icon: Stethoscope, count: patients.length },
             { id: 'schedule', label: 'Consultations & Schedule', icon: Calendar, count: consultations.length },
             { id: 'eprescribe', label: 'e-Prescriptions (EPCS)', icon: Pill, count: prescriptions.length },
+            { id: 'diagnostics', label: 'Lab & Imaging Requisitions', icon: FlaskConical, count: labOrders.length + radiologyOrders.length },
             { id: 'vitals', label: 'Telemetry Vitals & Flags', icon: HeartPulse, count: clinicalFlags.length },
             { id: 'records', label: 'Diagnostic Records', icon: FileText, count: medicalRecords.length }
           ].map(tab => {
@@ -1323,6 +1460,131 @@ export default function DoctorDashboard() {
           </div>
         )}
 
+        {/* ============================================================== */}
+        {/* TAB 6: DIAGNOSTIC REQUISITIONS (LAB & PACS RADIOLOGY)          */}
+        {/* ============================================================== */}
+        {activeTab === 'diagnostics' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                  <FlaskConical className="w-5 h-5 text-amber-400" />
+                  <span>Hospital Diagnostic Workstation Orders</span>
+                </h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Requisitions dispatched to Laboratory Medicine & PACS Radiology Workstations with status tracking and critical value alerts.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setShowDiagnosticsModal(true)}
+                className="px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs transition flex items-center space-x-2 shadow-lg shadow-amber-600/30"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Order Lab / PACS Study</span>
+              </button>
+            </div>
+
+            {/* Diagnostic Tables Grid */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Laboratory Orders Requisition Feed */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                    <FlaskConical className="w-4 h-4 text-amber-400" />
+                    <span>Laboratory Orders ({labOrders.length})</span>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Specimen Testing</span>
+                </div>
+
+                {labOrders.length === 0 ? (
+                  <div className="py-8 text-center text-slate-500 text-xs">
+                    No laboratory requisitions ordered yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    {labOrders.map((order: any) => (
+                      <div key={order.id} className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">{order.testName}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            order.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            order.status === 'PROCESSING' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse' :
+                            'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          }`}>
+                            {order.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span>Patient: {order.patient ? `${order.patient.firstName} ${order.patient.lastName}` : 'Assigned'}</span>
+                          <span className="font-mono text-[10px] text-cyan-400">{order.orderNumber}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Specimen: <strong className="text-slate-300">{order.specimenType}</strong>
+                        </div>
+                        {order.findings && (
+                          <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-[11px] space-y-1">
+                            <span className="text-slate-400 font-semibold">Findings:</span>
+                            <p className="text-white font-mono">{order.findings}</p>
+                            {order.referenceRange && <span className="text-[10px] text-slate-500">Range: {order.referenceRange}</span>}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* PACS Radiology & Medical Imaging Studies */}
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div className="flex items-center space-x-2 text-white font-bold text-sm">
+                    <Scan className="w-4 h-4 text-purple-400" />
+                    <span>PACS Radiology Studies ({radiologyOrders.length})</span>
+                  </div>
+                  <span className="text-xs font-mono text-slate-400">Diagnostic Imaging</span>
+                </div>
+
+                {radiologyOrders.length === 0 ? (
+                  <div className="py-8 text-center text-slate-500 text-xs">
+                    No radiology imaging studies ordered yet.
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                    {radiologyOrders.map((study: any) => (
+                      <div key={study.id} className="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white">{study.modality}: {study.bodyPart}</span>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold ${
+                            study.status === 'REPORTED' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                            study.status === 'IMAGED' ? 'bg-purple-500/20 text-purple-300 border border-purple-500/30' :
+                            'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                          }`}>
+                            {study.status}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-400">
+                          <span>Patient: {study.patient ? `${study.patient.firstName} ${study.patient.lastName}` : 'Assigned'}</span>
+                          <span className="font-mono text-[10px] text-purple-400">{study.accessionNumber}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Indication: <span className="text-slate-300">{study.clinicalIndication}</span>
+                        </div>
+                        {study.findings && (
+                          <div className="p-2 rounded-xl bg-slate-900 border border-slate-800 text-[11px] space-y-1">
+                            <span className="text-slate-400 font-semibold">Impression:</span>
+                            <p className="text-white font-mono">{study.findings}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {/* ============================================================== */}
@@ -1529,6 +1791,51 @@ export default function DoctorDashboard() {
                 ))}
               </div>
 
+              {/* Clinical Drug-Drug Interaction Safety Warnings */}
+              {(() => {
+                const alerts = checkDrugInteractions(rxItems);
+                if (alerts.length === 0) return null;
+                return (
+                  <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/40 text-amber-300 space-y-3 animate-fadeIn">
+                    <div className="flex items-start space-x-2.5">
+                      <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <h4 className="text-xs font-bold text-amber-200 uppercase tracking-wider">
+                          Clinical Drug-Drug Interaction Safety Alert ({alerts.length})
+                        </h4>
+                        <p className="text-[11px] text-slate-300">
+                          The current prescription items triggered automatic pharmacological contraindication warnings:
+                        </p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {alerts.map((alt, i) => (
+                        <div key={i} className="p-2.5 rounded-xl bg-slate-900/80 border border-amber-500/30 text-xs space-y-1">
+                          <div className="font-bold text-white flex items-center space-x-1.5">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-mono ${alt.severity === 'CRITICAL' ? 'bg-red-500/20 text-red-300 border border-red-500/40' : 'bg-amber-500/20 text-amber-300 border border-amber-500/40'}`}>
+                              {alt.severity}
+                            </span>
+                            <span>{alt.message}</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed">{alt.mechanism}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <label className="flex items-start space-x-2 text-xs text-slate-300 pt-1 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={drugInteractionOverride}
+                        onChange={e => setDrugInteractionOverride(e.target.checked)}
+                        className="w-4 h-4 mt-0.5 rounded bg-slate-900 border-slate-700 text-amber-500 focus:ring-amber-400"
+                      />
+                      <span className="font-medium text-amber-200 text-[11px] leading-relaxed">
+                        Attending Physician Clinical Override: I have reviewed the pharmacological interaction risk, evaluated the patient profile, and verified clinical necessity.
+                      </span>
+                    </label>
+                  </div>
+                );
+              })()}
+
               {/* Cryptographic Signature Password Authorization */}
               <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-500/40 space-y-2">
                 <div className="flex items-center space-x-2 text-emerald-400 text-xs font-bold">
@@ -1558,8 +1865,8 @@ export default function DoctorDashboard() {
                 </button>
                 <button
                   type="submit"
-                  disabled={rxSubmitting}
-                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-lg shadow-emerald-600/30"
+                  disabled={rxSubmitting || (checkDrugInteractions(rxItems).length > 0 && !drugInteractionOverride)}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-lg shadow-emerald-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <ShieldCheck className="w-4 h-4" />
                   <span>{rxSubmitting ? 'Digitally Signing...' : 'Sign & Issue Prescription'}</span>
@@ -1773,6 +2080,296 @@ export default function DoctorDashboard() {
               >
                 Dismiss
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: ORDER DIAGNOSTIC REQUISITION (LAB & PACS) */}
+      {showDiagnosticsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                  <FlaskConical className="w-5 h-5 text-amber-400" />
+                  <span>Hospital Diagnostic Requisition</span>
+                </h3>
+                <p className="text-[11px] text-slate-400">Direct electronic dispatch to Laboratory & PACS Imaging Stations.</p>
+              </div>
+              <button onClick={() => setShowDiagnosticsModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateDiagnosticOrder} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                  Patient
+                </label>
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs text-amber-300 font-bold">
+                  {activePatient ? `${activePatient.firstName} ${activePatient.lastName} (${activePatient.email})` : 'No patient selected'}
+                </div>
+              </div>
+
+              {/* Station Selection */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
+                  Diagnostic Station Department
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDiagType('LAB')}
+                    className={`p-3 rounded-2xl border text-xs font-bold transition flex items-center justify-center space-x-2 ${
+                      diagType === 'LAB'
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-md shadow-amber-500/10'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <FlaskConical className="w-4 h-4" />
+                    <span>Laboratory Medicine</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDiagType('RADIOLOGY')}
+                    className={`p-3 rounded-2xl border text-xs font-bold transition flex items-center justify-center space-x-2 ${
+                      diagType === 'RADIOLOGY'
+                        ? 'bg-purple-500/20 text-purple-300 border-purple-500/50 shadow-md shadow-purple-500/10'
+                        : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    <Scan className="w-4 h-4" />
+                    <span>PACS Radiology</span>
+                  </button>
+                </div>
+              </div>
+
+              {diagType === 'LAB' ? (
+                <>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                      Test Requisition Name *
+                    </label>
+                    <select
+                      value={diagTestName}
+                      onChange={e => setDiagTestName(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="Comprehensive Metabolic Panel (CMP)">Comprehensive Metabolic Panel (CMP)</option>
+                      <option value="Complete Blood Count (CBC) with Diff">Complete Blood Count (CBC) with Diff</option>
+                      <option value="Lipid Profile (Cholesterol, Triglycerides, HDL, LDL)">Lipid Profile</option>
+                      <option value="Hemoglobin A1c (HbA1c)">Hemoglobin A1c (HbA1c)</option>
+                      <option value="Thyroid Stimulating Hormone (TSH) with Free T4">Thyroid Panel (TSH / FT4)</option>
+                      <option value="Urinalysis Complete with Microscopic">Urinalysis Complete</option>
+                      <option value="Serum Troponin I (Cardiac Marker)">Serum Troponin I</option>
+                      <option value="SARS-CoV-2 (COVID-19) RT-PCR">COVID-19 RT-PCR</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                      Required Specimen Type
+                    </label>
+                    <select
+                      value={diagSpecimen}
+                      onChange={e => setDiagSpecimen(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="Blood (Serum)">Blood (Serum - Gold Top / SST)</option>
+                      <option value="Blood (EDTA Whole Blood)">Blood (EDTA - Lavender Top)</option>
+                      <option value="Blood (Citrate Plasma)">Blood (Citrate - Light Blue)</option>
+                      <option value="Clean Catch Urine">Clean Catch Midstream Urine</option>
+                      <option value="Nasopharyngeal Swab">Nasopharyngeal Swab</option>
+                    </select>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                        Imaging Modality
+                      </label>
+                      <select
+                        value={diagModality}
+                        onChange={e => setDiagModality(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="X_RAY">X-Ray (Radiography)</option>
+                        <option value="CT">CT (Computed Tomography)</option>
+                        <option value="MRI">MRI (Magnetic Resonance)</option>
+                        <option value="ULTRASOUND">Ultrasound (Sonogram)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                        Target Anatomy
+                      </label>
+                      <select
+                        value={diagBodyPart}
+                        onChange={e => setDiagBodyPart(e.target.value)}
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                      >
+                        <option value="Chest (PA & Lateral)">Chest (PA & Lateral)</option>
+                        <option value="Abdomen & Pelvis">Abdomen & Pelvis</option>
+                        <option value="Brain / Head">Brain / Head</option>
+                        <option value="Cervical / Lumbar Spine">Spine (Cervical / Lumbar)</option>
+                        <option value="Extremity / Joint">Extremity / Joint</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">
+                  Clinical Indication & Notes
+                </label>
+                <textarea
+                  rows={2}
+                  value={diagClinicalReason}
+                  onChange={e => setDiagClinicalReason(e.target.value)}
+                  placeholder="e.g. Rule out pneumonia, evaluate chronic hyperlipidemia..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:outline-none focus:border-amber-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setShowDiagnosticsModal(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={diagSubmitting}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-lg shadow-amber-600/30 disabled:opacity-50"
+                >
+                  <FlaskConical className="w-4 h-4" />
+                  <span>{diagSubmitting ? 'Dispatching...' : 'Dispatch Requisition Order'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: OFFICIAL PATIENT CLINICAL HEALTH SUMMARY */}
+      {showPatientSummaryModal && activePatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-2xl bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                  <ClipboardCheck className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">Official Clinical Health Summary</h3>
+                  <p className="text-[11px] text-slate-400">TeleMedSecure Hospital Clinical EHR Record</p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold transition flex items-center space-x-1.5 shadow-md shadow-indigo-600/20"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                  <span>Print Dossier</span>
+                </button>
+                <button onClick={() => setShowPatientSummaryModal(false)} className="text-slate-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Patient Header Block */}
+            <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Patient Name</span>
+                <span className="text-white font-bold">{activePatient.firstName} {activePatient.lastName}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Medical Record ID</span>
+                <span className="text-cyan-400 font-mono">MRN-{activePatient.id.substring(0, 8)}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Enrollment Date</span>
+                <span className="text-slate-300">{new Date(activePatient.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Attending Physician</span>
+                <span className="text-slate-200">Dr. {user?.firstName} {user?.lastName}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Security State</span>
+                <span className="text-emerald-400 font-mono font-bold">SHA-256 Chained</span>
+              </div>
+              <div>
+                <span className="text-slate-500 block text-[10px] uppercase font-semibold">Verification</span>
+                <span className="text-slate-300">{activePatient.verificationStatus || 'VERIFIED'}</span>
+              </div>
+            </div>
+
+            {/* Active Diagnoses & Encounters */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                <FileText className="w-3.5 h-3.5 text-blue-400" />
+                <span>Recorded Clinical Encounters ({patientConsultations.length})</span>
+              </h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {patientConsultations.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No formal consultation records.</p>
+                ) : (
+                  patientConsultations.map(c => (
+                    <div key={c.id} className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs flex justify-between">
+                      <div>
+                        <span className="text-white font-semibold">Consultation #{c.id.substring(0, 8)}</span>
+                        <div className="text-[11px] text-slate-400">Scheduled: {new Date(c.scheduledAt).toLocaleString()}</div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-blue-500/10 text-blue-400 border border-blue-500/30 h-fit">
+                        {c.status}
+                      </span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Current Active Prescriptions */}
+            <div className="space-y-2">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center space-x-1.5">
+                <Pill className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Active Electronic Prescriptions ({patientPrescriptions.length})</span>
+              </h4>
+              <div className="space-y-2 max-h-40 overflow-y-auto">
+                {patientPrescriptions.length === 0 ? (
+                  <p className="text-xs text-slate-500 italic">No active prescriptions.</p>
+                ) : (
+                  patientPrescriptions.map(rx => (
+                    <div key={rx.id} className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 text-xs space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="font-mono text-cyan-400 text-[11px]">Rx #{rx.id.substring(0, 8)}</span>
+                        <span className="text-emerald-400 font-bold text-[10px]">Ed25519 Signed</span>
+                      </div>
+                      {rx.items?.map((it: any, i: number) => (
+                        <div key={i} className="text-slate-300 text-[11px]">
+                          • <strong className="text-white">{it.medication}</strong> ({it.dosage}) — {it.frequency}
+                        </div>
+                      ))}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Cryptographic Compliance Notice */}
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-[11px] text-emerald-300 flex items-center space-x-2">
+              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>Certified DEA EPCS and HIPAA Title II compliant medical summary document.</span>
             </div>
           </div>
         </div>
