@@ -44,7 +44,9 @@ import {
   FileCheck,
   Users,
   XCircle,
-  CalendarClock
+  CalendarClock,
+  LayoutDashboard,
+  ClipboardList
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -85,7 +87,7 @@ export default function DoctorDashboard() {
   const { user, getAuthHeaders, logout } = useAuth();
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics' | 'shared'>('patient-hub');
+  const [activeTab, setActiveTab] = useState<'overview' | 'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics' | 'shared'>('overview');
 
   // Main clinical data
   const [patients, setPatients] = useState<PatientSummary[]>([]);
@@ -208,6 +210,9 @@ export default function DoctorDashboard() {
   const [bookingAction, setBookingAction] = useState<{ mode: 'decline' | 'reschedule' | 'cancel'; c: any } | null>(null);
   const [bookingActionBusy, setBookingActionBusy] = useState(false);
   const [bookingActionInput, setBookingActionInput] = useState('');
+
+  // Command-center overview: unread booking/access notifications count
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   // Real-Time Patient Chat Notifications State
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -381,7 +386,7 @@ export default function DoctorDashboard() {
     setLoading(true);
     setActionError(null);
     try {
-      const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes, sharedRes] = await Promise.all([
+      const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes, sharedRes, notifRes] = await Promise.all([
         apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients'),
         apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
         apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions'),
@@ -389,7 +394,8 @@ export default function DoctorDashboard() {
         apiGet<any[]>(getAuthHeaders, '/medical-records', 'Failed to load medical records'),
         apiGet<any[]>(getAuthHeaders, '/stations/lab/orders', 'Failed to load lab orders').catch(() => []),
         apiGet<any[]>(getAuthHeaders, '/stations/radiology/studies', 'Failed to load radiology studies').catch(() => []),
-        apiGet<any[]>(getAuthHeaders, '/access/shared-with-me', 'Failed to load shared grants').catch(() => [])
+        apiGet<any[]>(getAuthHeaders, '/access/shared-with-me', 'Failed to load shared grants').catch(() => []),
+        apiGet<{ items: any[]; unreadCount: number }>(getAuthHeaders, '/notifications?unread=true&limit=1', 'Failed to load notifications').catch(() => ({ items: [], unreadCount: 0 }))
       ]);
 
       const pts = Array.isArray(ptsRes) ? ptsRes : [];
@@ -401,6 +407,7 @@ export default function DoctorDashboard() {
       setLabOrders(Array.isArray(labRes) ? labRes : []);
       setRadiologyOrders(Array.isArray(radRes) ? radRes : []);
       setSharedGrants(Array.isArray(sharedRes) ? sharedRes : []);
+      setUnreadNotifCount(typeof notifRes?.unreadCount === 'number' ? notifRes.unreadCount : 0);
 
       // Auto-select first patient if none selected
       if (!selectedPatientId && pts.length > 0) {
@@ -757,6 +764,7 @@ export default function DoctorDashboard() {
   };
 
   const doctorTabs: NavTab[] = [
+    { id: 'overview', label: 'Command Center', caption: 'Today at a glance', group: 'Physician Station', icon: LayoutDashboard },
     { id: 'patient-hub', label: 'Patient Clinical Workspace', caption: 'Directory & active patient', group: 'Physician Station', icon: Stethoscope },
     { id: 'schedule', label: 'Consultations & Schedule', caption: 'Upcoming visits', group: 'Physician Station', icon: Calendar },
     { id: 'eprescribe', label: 'e-Prescriptions (EPCS)', caption: 'Signed prescriptions', group: 'Physician Station', icon: Pill },
@@ -766,7 +774,17 @@ export default function DoctorDashboard() {
     { id: 'shared', label: 'Shared With Me', caption: 'Temporary patient access', group: 'Physician Station', icon: KeyRound },
   ];
   const nav: NavGroup[] = buildStationNav('DOCTOR', doctorTabs);
+  const pendingRequests = consultations.filter(c => c.status === 'PENDING');
+  const isSameDay = (iso: string) => {
+    const d = new Date(iso);
+    const n = new Date();
+    return d.getFullYear() === n.getFullYear() && d.getMonth() === n.getMonth() && d.getDate() === n.getDate();
+  };
+  const todayVisits = consultations.filter(c => isSameDay(c.scheduledAt) && ['CONFIRMED', 'SCHEDULED', 'IN_PROGRESS'].includes(c.status));
+  const criticalFlags = clinicalFlags.filter(f => !f.resolved && (f.severity === 'HIGH' || f.severity === 'CRITICAL'));
+  const actionable = pendingRequests.length + criticalFlags.length;
   const counts: Record<string, CountChip> = {
+    overview: { value: actionable, status: actionable > 0 ? 'success' : 'idle' },
     'patient-hub': { value: patients.length, status: 'success' },
     schedule: { value: consultations.length, status: 'success' },
     eprescribe: { value: prescriptions.length, status: 'success' },
@@ -885,8 +903,9 @@ export default function DoctorDashboard() {
         )}
 
         {/* ============================================================== */}
-        {/* INTERACTIVE PATIENT SELECTOR COMMAND BAR                        */}
+        {/* INTERACTIVE PATIENT SELECTOR COMMAND BAR (hidden on overview)  */}
         {/* ============================================================== */}
+        {activeTab !== 'overview' && (
         <div className="bg-slate-900/90 border border-blue-500/30 rounded-3xl p-5 shadow-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-3">
@@ -1028,6 +1047,139 @@ export default function DoctorDashboard() {
             </div>
           )}
         </div>
+        )}
+
+        {/* ============================================================== */}
+        {/* TAB 0: COMMAND CENTER OVERVIEW                                 */}
+        {/* ============================================================== */}
+        {activeTab === 'overview' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <LayoutDashboard className="w-6 h-6 text-cyan-400" />
+                <div>
+                  <h2 className="text-lg font-bold text-white">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, Dr. {user?.lastName}</h2>
+                  <p className="text-xs text-slate-400">Your clinical day at a glance — {todayVisits.length} visit{todayVisits.length === 1 ? '' : 's'} today, {pendingRequests.length} awaiting your decision.</p>
+                </div>
+              </div>
+            </div>
+
+            {/* KPI cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              {[
+                { label: 'Awaiting Decision', value: pendingRequests.length, tone: 'amber', icon: ClipboardList, hint: 'Pending booking requests', onClick: () => setActiveTab('schedule') },
+                { label: "Today's Visits", value: todayVisits.length, tone: 'blue', icon: Calendar, hint: 'Confirmed & scheduled', onClick: () => setActiveTab('schedule') },
+                { label: 'Critical Alerts', value: criticalFlags.length, tone: 'red', icon: AlertTriangle, hint: 'Unresolved high-severity flags', onClick: () => setActiveTab('vitals') },
+                { label: 'Unread Alerts', value: unreadNotifCount, tone: 'purple', icon: Bell, hint: 'Booking & access notifications' },
+                { label: 'Panel Patients', value: patients.length, tone: 'emerald', icon: Users, hint: 'On your care panel', onClick: () => setActiveTab('patient-hub') },
+                { label: 'Rx Issued', value: prescriptions.length, tone: 'cyan', icon: Pill, hint: 'Signed prescriptions', onClick: () => setActiveTab('eprescribe') },
+              ].map((kpi) => {
+                const toneMap: Record<string, string> = {
+                  amber: 'text-amber-300 border-amber-500/30 bg-amber-500/5',
+                  blue: 'text-blue-300 border-blue-500/30 bg-blue-500/5',
+                  red: 'text-rose-300 border-rose-500/30 bg-rose-500/5',
+                  purple: 'text-purple-300 border-purple-500/30 bg-purple-500/5',
+                  emerald: 'text-emerald-300 border-emerald-500/30 bg-emerald-500/5',
+                  cyan: 'text-cyan-300 border-cyan-500/30 bg-cyan-500/5',
+                };
+                const Icon = kpi.icon;
+                return (
+                  <button
+                    key={kpi.label}
+                    type="button"
+                    onClick={kpi.onClick}
+                    disabled={!kpi.onClick}
+                    className={`text-left p-4 rounded-2xl border ${toneMap[kpi.tone]} ${kpi.onClick ? 'hover:brightness-125 cursor-pointer transition' : 'cursor-default'} flex flex-col gap-1`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono uppercase tracking-wider opacity-80">{kpi.label}</span>
+                      <Icon className="w-4 h-4 opacity-80" />
+                    </div>
+                    <span className="text-2xl font-black">{kpi.value}</span>
+                    <span className="text-[11px] opacity-70">{kpi.hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Quick actions */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono uppercase tracking-wider text-slate-500 mr-1">Quick actions</span>
+              <Button variant="secondary" icon={Calendar} onClick={() => setShowScheduleModal(true)}>Schedule Visit</Button>
+              <Button variant="success" icon={Pill} onClick={() => setShowPrescribeModal(true)}>e-Prescribe</Button>
+              <Button variant="ghost" icon={FlaskConical} onClick={() => setShowDiagnosticsModal(true)}>Order Diagnostics</Button>
+              <Button variant="ghost" icon={FileText} onClick={() => setActiveTab('records')}>New Record / SOAP</Button>
+            </div>
+
+            {/* Prioritised to-do queue */}
+            <div className="grid lg:grid-cols-2 gap-4">
+              <Panel title="Awaiting Your Decision" icon={ClipboardList} description="Patient booking requests that need accept or decline.">
+                {pendingRequests.length === 0 ? (
+                  <EmptyState icon={CheckCircle2} title="Nothing pending" description="All booking requests have been actioned." />
+                ) : (
+                  <div className="grid gap-2">
+                    {pendingRequests.slice(0, 6).map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : 'Patient'}</p>
+                          <p className="text-[11px] text-slate-400">{new Date(c.scheduledAt).toLocaleString()}</p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button onClick={() => handleAcceptBooking(c)} className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold transition flex items-center space-x-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /><span>Accept</span>
+                          </button>
+                          <button onClick={() => openBookingAction('decline', c)} className="px-2.5 py-1.5 rounded-lg bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white text-[11px] font-bold transition flex items-center space-x-1">
+                            <XCircle className="w-3.5 h-3.5" /><span>Decline</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+
+              <Panel title="Critical Clinical Flags" icon={AlertTriangle} description="Unresolved high-severity vitals across your panel.">
+                {criticalFlags.length === 0 ? (
+                  <EmptyState icon={ShieldCheck} title="No critical flags" description="No unresolved high-severity alerts right now." />
+                ) : (
+                  <div className="grid gap-2">
+                    {criticalFlags.slice(0, 6).map((f) => (
+                      <div key={f.id} className="rounded-xl border border-rose-500/20 bg-rose-500/5 px-4 py-2.5">
+                        <div className="flex items-center justify-between">
+                          <p className="text-sm font-semibold text-white truncate">{f.patient ? `${f.patient.firstName} ${f.patient.lastName}` : 'Patient'}</p>
+                          <Badge tone="danger">{f.severity}</Badge>
+                        </div>
+                        <p className="text-[11px] text-slate-300">{f.description}</p>
+                        <p className="text-[10px] text-slate-500 font-mono mt-0.5">{f.flagType} · {new Date(f.createdAt).toLocaleString()}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </Panel>
+            </div>
+
+            {/* Today's schedule strip */}
+            <Panel title="Today's Schedule" icon={Calendar} description="Confirmed and scheduled encounters for today.">
+              {todayVisits.length === 0 ? (
+                <EmptyState icon={Calendar} title="No visits today" description="Nothing on the calendar for the rest of the day." />
+              ) : (
+                <div className="grid gap-2">
+                  {todayVisits.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : 'Patient'}</p>
+                        <p className="text-[11px] text-slate-400 font-mono">{new Date(c.scheduledAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · {handoffBadge(c.status).label}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button variant="ghost" icon={Video} onClick={() => { setSelectedPatientId(c.patientId || ''); navigate(`/call/${c.id}`); }}>Join</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
+          </div>
+        )}
 
         {/* ============================================================== */}
         {/* TAB 1: PATIENT CLINICAL WORKSPACE                              */}
