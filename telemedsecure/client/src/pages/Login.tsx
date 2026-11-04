@@ -40,10 +40,6 @@ export default function Login() {
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
-  // The API only asks for a second factor once the account has an enrolled TOTP
-  // secret, so the field stays hidden until the server reports `requires2FA`.
-  const [showTotpField, setShowTotpField] = useState(false);
-  const [totpCode, setTotpCode] = useState('');
 
   // Patient registration toggle (Self-service ONLY for Patients)
   const [isPatientRegister, setIsPatientRegister] = useState(false);
@@ -136,8 +132,6 @@ export default function Login() {
     setSuccessMessage(null);
     setValidationErrors({});
     setIsPatientRegister(false);
-    setShowTotpField(false);
-    setTotpCode('');
   };
 
   const validateForm = () => {
@@ -162,12 +156,6 @@ export default function Login() {
       if (!lastName || lastName.trim().length < 2) {
         errors.lastName = 'Last name must be at least 2 characters';
       }
-    }
-
-    // Only enforced once the server has asked for it, so first-factor-only
-    // accounts are never blocked by a client-side guess.
-    if (showTotpField && !/^\d{6}$/.test(totpCode.trim())) {
-      errors.totp = 'Enter the 6-digit code from your authenticator app';
     }
 
     setValidationErrors(errors);
@@ -216,10 +204,9 @@ export default function Login() {
       return;
     }
 
-    // Unified sign in for Doctor, Nurse, Admin, or Patient. The second factor is
-    // attached whenever it has been requested; the server decides whether an
-    // account is enrolled, the client never assumes it.
-    const res = await login(email.trim().toLowerCase(), password, showTotpField ? totpCode.trim() : undefined);
+    // Unified sign in for Doctor, Nurse, Admin, or Patient (email + password;
+    // the authenticator-app second factor has been removed from the login flow).
+    const res = await login(email.trim().toLowerCase(), password);
     if (res.success) {
       // Direct navigation to user's authorized role dashboard
       const storedUser = localStorage.getItem('telemed_user');
@@ -228,13 +215,6 @@ export default function Login() {
       navigate(rolePath);
     } else {
       setError(res.error || 'Invalid email or password.');
-      if (res.requires2FA) {
-        setShowTotpField(true);
-        setTotpCode('');
-      } else {
-        setShowTotpField(false);
-        setTotpCode('');
-      }
     }
     setLoading(false);
   };
@@ -851,40 +831,6 @@ export default function Login() {
                   <p className="text-[10px] text-red-400 mt-1">{validationErrors.password}</p>
                 )}
               </div>
-
-              {/* Second factor — revealed only when the API reports the enrolment */}
-              {showTotpField && (
-                <div className="animate-fadeIn">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                      Authenticator Code *
-                    </label>
-                    <span className="text-[10px] text-slate-500">6 digits, 30-second window</span>
-                  </div>
-                  <div className="relative">
-                    <ShieldCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                    <input
-                      type="text"
-                      value={totpCode}
-                      onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                      inputMode="numeric"
-                      autoComplete="one-time-code"
-                      maxLength={6}
-                      placeholder="000000"
-                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 font-mono tracking-[0.4em] text-center text-xs focus:outline-none ${
-                        validationErrors.totp ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
-                    />
-                  </div>
-                  {validationErrors.totp ? (
-                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.totp}</p>
-                  ) : (
-                    <p className="text-[10px] text-slate-500 mt-1">
-                      This account has 2FA enrolled. Codes are verified server-side against your enrolment secret.
-                    </p>
-                  )}
-                </div>
-              )}
 
               {/* Submit Button */}
               <button

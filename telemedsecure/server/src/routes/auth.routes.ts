@@ -291,7 +291,7 @@ router.post('/apply-practitioner', async (req, res) => {
   res.json({ message: 'Password changed successfully' });
 });
 router.post('/login', async (req, res) => {
-  const { email, password, totp } = req.body;
+  const { email, password } = req.body;
 
   // Generic error response for any failure
   const invalidResponse = () => res.status(401).json({ error: 'Invalid credentials' });
@@ -337,40 +337,9 @@ router.post('/login', async (req, res) => {
     return invalidResponse();
   }
 
-  // Second factor. A stored TOTP secret means the account is enrolled, and
-  // enrolment is only worth asserting if login actually demands the code:
-  // previously the secret was written on enrolment and never read back here,
-  // so the admin console's "TOTP ACTIVE" badge and the HIPAA §164.312(d)
-  // control claim were backed by nothing.
-  if (user.totpSecret) {
-    if (!totp) {
-      await logAudit('LOGIN_2FA_REQUIRED', 'AUTH', user.id, req.ip);
-      return res.status(401).json({ error: 'Enter the 6-digit code from your authenticator app.', requires2FA: true });
-    }
-
-    let validTotp = false;
-    try {
-      validTotp = speakeasy.totp.verify({
-        secret: user.totpSecret,
-        encoding: 'base32',
-        token: String(totp).trim(),
-        window: 1
-      });
-    } catch {
-      validTotp = false;
-    }
-
-    if (!validTotp) {
-      // Wrong OTP counts toward the same lockout as a wrong password, so the
-      // second factor cannot be brute-forced independently.
-      const failedAttempts = (user.failedAttempts ?? 0) + 1;
-      const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
-      await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
-      await logAudit('LOGIN_2FA_FAILURE', 'AUTH', user.id, req.ip);
-      await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
-      return res.status(401).json({ error: 'Invalid authenticator code.', requires2FA: true });
-    }
-  }
+  // Second factor removed: sign-in now authenticates on email + password only.
+  // The /2fa enrollment and management endpoints remain, but a stored TOTP
+  // secret no longer blocks or prompts the login flow.
 
   // Only a fully authenticated attempt clears the failure counter.
   await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });

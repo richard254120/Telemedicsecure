@@ -30,7 +30,7 @@ interface AuthContextType {
   user: AuthUser | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string, totp?: string) => Promise<{ success: boolean; error?: string; requires2FA?: boolean }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   getAuthHeaders: () => Record<string, string>;
 }
@@ -91,24 +91,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = useCallback(
-    async (email: string, password: string, totp?: string): Promise<{ success: boolean; error?: string; requires2FA?: boolean }> => {
+    async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
       try {
-        // `totp` is only attached when supplied: the API treats a stored secret on
-        // the user row as an enrolment and rejects the attempt with `requires2FA`
-        // until the code comes back. No request or response payload is logged —
-        // this context used to `console.log` the credentials-bearing response.
+        // Email + password only — the authenticator-app second factor was
+        // removed from the login flow. No request or response payload is
+        // logged — this context used to `console.log` the credentials-bearing response.
         const res = await fetch(`${API_BASE}/auth/login`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(totp ? { email, password, totp } : { email, password })
+          body: JSON.stringify({ email, password })
         });
 
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           return {
             success: false,
-            error: errorData.error || 'Authentication failed',
-            requires2FA: !!errorData.requires2FA
+            error: errorData.error || 'Authentication failed'
           };
         }
 
