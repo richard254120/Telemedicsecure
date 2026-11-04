@@ -19,6 +19,8 @@ import {
   ArrowUpRight,
   TrendingDown
 } from 'lucide-react';
+import { Badge } from '../../dashboard-shell/ui';
+import { handoffBadge, handoffTone } from '../../dashboard-shell/handoff';
 
 export default function PharmacyWorkbench() {
   const navigate = useNavigate();
@@ -288,13 +290,7 @@ export default function PharmacyWorkbench() {
                 <div key={rx.id} className="p-6 hover:bg-slate-850/50 transition flex flex-col md:flex-row md:items-center justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center space-x-2">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold ${
-                        rx.status === 'DISPENSED'
-                          ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                          : 'bg-amber-500/20 text-amber-300 border border-amber-500/30 animate-pulse'
-                      }`}>
-                        {rx.status}
-                      </span>
+                      <Badge tone={handoffTone(rx.status)}>{handoffBadge(rx.status).label}</Badge>
                       <span className="text-xs font-mono text-cyan-400 font-bold">RX-#{rx.id.slice(0, 8).toUpperCase()}</span>
                       <span className="text-xs text-slate-400">Issued: {new Date(rx.createdAt).toLocaleDateString()}</span>
                     </div>

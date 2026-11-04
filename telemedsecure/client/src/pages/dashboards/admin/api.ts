@@ -10,6 +10,21 @@
  *     terminated instead of leaving a stale operator looking at a blank HUD.
  */
 import { API_BASE } from '../../../config';
+import {
+  AUTH_EXPIRED_EVENT,
+  ApiError,
+  errorMessage,
+  isAbortError,
+  get,
+  put,
+  post,
+  del,
+  type HeadersFactory,
+} from '../../../dashboard-shell/transport';
+
+// Re-export the generic transport so existing `api.*` call sites keep working.
+export { AUTH_EXPIRED_EVENT, ApiError, errorMessage, isAbortError };
+export type { HeadersFactory };
 import type {
   AdminUser,
   ChainVerificationReport,
@@ -25,95 +40,6 @@ import type {
   PrescriptionAudit,
 } from './types';
 import type { UserRole } from '../../../context/AuthContext';
-
-export const AUTH_EXPIRED_EVENT = 'telemed:auth-expired';
-
-export class ApiError extends Error {
-  readonly status: number;
-  readonly detail: string | null;
-
-  constructor(status: number, message: string, detail: string | null = null) {
-    super(message);
-    this.name = 'ApiError';
-    this.status = status;
-    this.detail = detail;
-  }
-
-  /** True when the response means "your session is no longer valid". */
-  get isAuthFailure() {
-    return this.status === 401 || this.status === 403;
-  }
-}
-
-type HeadersFactory = () => Record<string, string>;
-
-/**
- * True for the rejection an AbortController produces. `fetch` rejects with a
- * DOMException (not an Error subclass every engine guarantees), so the name is
- * read structurally instead of via `err: any`.
- */
-export function isAbortError(err: unknown): boolean {
-  return typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError';
-}
-
-/** A message safe to show an operator, from a value of unknown shape. */
-export function errorMessage(err: unknown, fallback: string): string {
-  return err instanceof Error && err.message ? err.message : fallback;
-}
-
-function broadcastAuthExpired() {
-  window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT));
-}
-
-async function parseError(res: Response, fallback: string): Promise<ApiError> {
-  let detail: string | null = null;
-  try {
-    const body = await res.json();
-    detail = (body && (body.error || body.message || body.details)) || null;
-  } catch {
-    detail = null;
-  }
-  if (res.status === 401 || res.status === 403) broadcastAuthExpired();
-  return new ApiError(res.status, detail || `${fallback} (HTTP ${res.status})`, detail);
-}
-
-async function request<T>(
-  getAuthHeaders: HeadersFactory,
-  path: string,
-  init: RequestInit,
-  fallbackMessage: string,
-): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...getAuthHeaders(),
-      },
-    });
-  } catch (err) {
-    if (isAbortError(err)) throw err;
-    throw new ApiError(0, `${fallbackMessage}: network unreachable`);
-  }
-
-  if (!res.ok) throw await parseError(res, fallbackMessage);
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
-}
-
-const get = <T>(h: HeadersFactory, path: string, msg: string, signal?: AbortSignal) =>
-  request<T>(h, path, { method: 'GET', signal }, msg);
-
-const put = <T>(h: HeadersFactory, path: string, body: unknown, msg: string) =>
-  request<T>(h, path, { method: 'PUT', body: JSON.stringify(body) }, msg);
-
-const post = <T>(h: HeadersFactory, path: string, body: unknown, msg: string) =>
-  request<T>(h, path, { method: 'POST', body: JSON.stringify(body) }, msg);
-
-const del = <T>(h: HeadersFactory, path: string, msg: string) =>
-  request<T>(h, path, { method: 'DELETE' }, msg);
 
 /* ------------------------------------------------------------------ *
  * Reads

@@ -47,6 +47,11 @@ import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
+import Shell from '../../dashboard-shell/Shell';
+import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
+import { Button } from '../../dashboard-shell/ui';
+import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
 
 export interface PatientSummary {
   id: string;
@@ -72,7 +77,7 @@ export interface PatientSummary {
 
 export default function DoctorDashboard() {
   const navigate = useNavigate();
-  const { user, getAuthHeaders } = useAuth();
+  const { user, getAuthHeaders, logout } = useAuth();
 
   // Navigation tab
   const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics'>('patient-hub');
@@ -86,6 +91,7 @@ export default function DoctorDashboard() {
   const [labOrders, setLabOrders] = useState<any[]>([]);
   const [radiologyOrders, setRadiologyOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -316,15 +322,14 @@ export default function DoctorDashboard() {
     setLoading(true);
     setActionError(null);
     try {
-      const headers = getAuthHeaders();
       const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes] = await Promise.all([
-        fetch(`${API_BASE}/consultations/patients`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/vital-signs/clinical-flags/all`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/medical-records`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/stations/lab/orders`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/stations/radiology/studies`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+        apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients'),
+        apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
+        apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions'),
+        apiGet<any[]>(getAuthHeaders, '/vital-signs/clinical-flags/all', 'Failed to load clinical flags'),
+        apiGet<any[]>(getAuthHeaders, '/medical-records', 'Failed to load medical records'),
+        apiGet<any[]>(getAuthHeaders, '/stations/lab/orders', 'Failed to load lab orders').catch(() => []),
+        apiGet<any[]>(getAuthHeaders, '/stations/radiology/studies', 'Failed to load radiology studies').catch(() => [])
       ]);
 
       const pts = Array.isArray(ptsRes) ? ptsRes : [];
@@ -342,8 +347,9 @@ export default function DoctorDashboard() {
       }
     } catch (e: any) {
       console.error('Failed to load doctor dashboard data', e);
-      setActionError('Network error loading clinical datasets');
+      setActionError(errorMessage(e, 'Unable to load clinical datasets'));
     } finally {
+      setLastSyncedAt(Date.now());
       setLoading(false);
     }
   };
@@ -652,10 +658,105 @@ export default function DoctorDashboard() {
     setRxItems(rxItems.filter((_, i) => i !== index));
   };
 
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-4 sm:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
+  const doctorTabs: NavTab[] = [
+    { id: 'patient-hub', label: 'Patient Clinical Workspace', caption: 'Directory & active patient', group: 'Physician Station', icon: Stethoscope },
+    { id: 'schedule', label: 'Consultations & Schedule', caption: 'Upcoming visits', group: 'Physician Station', icon: Calendar },
+    { id: 'eprescribe', label: 'e-Prescriptions (EPCS)', caption: 'Signed prescriptions', group: 'Physician Station', icon: Pill },
+    { id: 'diagnostics', label: 'Lab & Imaging Requisitions', caption: 'Orders & results', group: 'Physician Station', icon: FlaskConical },
+    { id: 'vitals', label: 'Telemetry Vitals & Flags', caption: 'Clinical flags', group: 'Physician Station', icon: HeartPulse },
+    { id: 'records', label: 'Diagnostic Records', caption: 'SOAP & notes', group: 'Physician Station', icon: FileText },
+  ];
+  const nav: NavGroup[] = buildStationNav('DOCTOR', doctorTabs);
+  const counts: Record<string, CountChip> = {
+    'patient-hub': { value: patients.length, status: 'success' },
+    schedule: { value: consultations.length, status: 'success' },
+    eprescribe: { value: prescriptions.length, status: 'success' },
+    diagnostics: { value: labOrders.length + radiologyOrders.length, status: 'success' },
+    vitals: { value: clinicalFlags.length, status: 'success' },
+    records: { value: medicalRecords.length, status: 'success' },
+  };
+  const signOut = () => { logout(); navigate('/login', { replace: true }); };
+  const headerActions = (
+    <>
+      {/* Real-Time Clinical Notifications Bell */}
+      <div className="relative">
+        <button
+          onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
+          className="relative px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
+          title="Clinical Message Alerts"
+        >
+          <Bell className="w-4 h-4 text-amber-400" />
+          <span>Alerts</span>
+          {notifications.filter(n => !n.read).length > 0 && (
+            <span className="w-5 h-5 bg-rose-500 text-white rounded-full text-[10px] font-black flex items-center justify-center animate-pulse shadow-md ml-1">
+              {notifications.filter(n => !n.read).length}
+            </span>
+          )}
+        </button>
+        {showNotificationsDropdown && (
+          <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
+            <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Bell className="w-4 h-4 text-amber-400" />
+                <span className="text-xs font-bold text-white uppercase tracking-wider">Clinical Alerts</span>
+                {notifications.filter(n => !n.read).length > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
+                    {notifications.filter(n => !n.read).length} new
+                  </span>
+                )}
+              </div>
+              {notifications.some(n => !n.read) && (
+                <button onClick={handleMarkAllNotificationsRead} className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold">Mark all read</button>
+              )}
+            </div>
+            <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
+              {notifications.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-400">No clinical messages yet. Alerts will appear here in real time.</div>
+              ) : (
+                notifications.map(notif => (
+                  <div key={notif.id} onClick={() => handleOpenPatientChatFromNotification(notif)} className={`p-3.5 hover:bg-slate-800/80 cursor-pointer transition flex items-start space-x-3 ${!notif.read ? 'bg-blue-950/30 border-l-2 border-cyan-400' : ''}`}>
+                    <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
+                      <MessageSquare className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-bold text-white truncate">{notif.patientName}</p>
+                        <span className="text-[10px] text-slate-400 font-mono">{notif.timestamp}</span>
+                      </div>
+                      <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">{notif.text}</p>
+                      <span className="inline-block mt-1 text-[10px] font-semibold text-cyan-400 hover:underline">Open Chat &amp; Chart →</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+      <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
+      <Button variant="primary" icon={Pill} onClick={() => setShowPrescribeModal(true)}>e-Prescribe (EPCS)</Button>
+      <Button variant="success" icon={Calendar} onClick={() => setShowScheduleModal(true)}>Schedule Call</Button>
+    </>
+  );
 
+  return (
+    <>
+      <Shell
+        user={user}
+        nav={nav}
+        accent={accentForRole(user?.role)}
+        brandTitle="TeleMedSecure"
+        brandSubtitle={brandSubtitleForRole(user?.role)}
+        activeTab={activeTab}
+        onSelectTab={id => setActiveTab(id as typeof activeTab)}
+        counts={counts}
+        lastSyncedAt={lastSyncedAt}
+        isRefreshing={loading}
+        onRefresh={fetchDoctorData}
+        headerActions={headerActions}
+        onOpenTwoFactor={() => setShow2FAModal(true)}
+        onSignOut={signOut}
+      >
         {/* Global Action Notifications */}
         {actionSuccess && (
           <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-xs font-semibold flex items-center justify-between animate-fadeIn shadow-lg shadow-emerald-500/10">
@@ -680,144 +781,6 @@ export default function DoctorDashboard() {
             </button>
           </div>
         )}
-
-        {/* Top Header Card: Attending Physician Credentials */}
-        <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-1">
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold uppercase tracking-wider">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Licensed Attending Physician • DEA EPCS Registered</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight flex items-center space-x-2">
-              <Stethoscope className="w-7 h-7 text-blue-400" />
-              <span>Dr. {user?.firstName} {user?.lastName}</span>
-            </h1>
-            <p className="text-xs text-slate-400">
-              License: <span className="font-mono text-slate-300">{user?.medicalLicenseNo || 'NPI-1928301948'}</span> ({user?.licenseJurisdiction || 'US-NPI'}) • Specialty: <span className="text-blue-300 font-semibold">{user?.specialty || 'General Practice'}</span>
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Real-Time Clinical Notifications Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
-                className="relative px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-                title="Clinical Message Alerts"
-              >
-                <Bell className="w-4 h-4 text-amber-400" />
-                <span>Alerts</span>
-                {notifications.filter(n => !n.read).length > 0 && (
-                  <span className="w-5 h-5 bg-rose-500 text-white rounded-full text-[10px] font-black flex items-center justify-center animate-pulse shadow-md ml-1">
-                    {notifications.filter(n => !n.read).length}
-                  </span>
-                )}
-              </button>
-
-              {/* Notification Popover Dropdown */}
-              {showNotificationsDropdown && (
-                <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl z-50 overflow-hidden animate-fadeIn">
-                  <div className="p-4 bg-slate-950/80 border-b border-slate-800 flex items-center justify-between">
-                    <div className="flex items-center space-x-2">
-                      <Bell className="w-4 h-4 text-amber-400" />
-                      <span className="text-xs font-bold text-white uppercase tracking-wider">Clinical Alerts</span>
-                      {notifications.filter(n => !n.read).length > 0 && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40">
-                          {notifications.filter(n => !n.read).length} new
-                        </span>
-                      )}
-                    </div>
-                    {notifications.some(n => !n.read) && (
-                      <button
-                        onClick={handleMarkAllNotificationsRead}
-                        className="text-[11px] text-cyan-400 hover:text-cyan-300 font-semibold"
-                      >
-                        Mark all read
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="max-h-80 overflow-y-auto divide-y divide-slate-800/60">
-                    {notifications.length === 0 ? (
-                      <div className="p-6 text-center text-xs text-slate-400">
-                        No clinical messages yet. Alerts will appear here in real time.
-                      </div>
-                    ) : (
-                      notifications.map(notif => (
-                        <div
-                          key={notif.id}
-                          onClick={() => handleOpenPatientChatFromNotification(notif)}
-                          className={`p-3.5 hover:bg-slate-800/80 cursor-pointer transition flex items-start space-x-3 ${
-                            !notif.read ? 'bg-blue-950/30 border-l-2 border-cyan-400' : ''
-                          }`}
-                        >
-                          <div className="w-8 h-8 rounded-xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 flex-shrink-0 mt-0.5">
-                            <MessageSquare className="w-4 h-4" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between">
-                              <p className="text-xs font-bold text-white truncate">
-                                {notif.patientName}
-                              </p>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                {notif.timestamp}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-300 line-clamp-2 mt-0.5">
-                              {notif.text}
-                            </p>
-                            <span className="inline-block mt-1 text-[10px] font-semibold text-cyan-400 hover:underline">
-                              Open Chat & Chart →
-                            </span>
-                          </div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => setShowChatDrawer(true)}
-              className="px-3.5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <MessageSquare className="w-4 h-4" />
-              <span>Care Chat</span>
-            </button>
-            <button
-              onClick={() => setShow2FAModal(true)}
-              className="px-3.5 py-3 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <KeyRound className="w-4 h-4" />
-              <span>2FA Security</span>
-            </button>
-            <button
-              onClick={fetchDoctorData}
-              disabled={loading}
-              className="p-3 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
-              title="Refresh Data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={() => {
-                setShowPrescribeModal(true);
-              }}
-              className="px-4 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs transition shadow-lg shadow-blue-600/20 flex items-center space-x-2"
-            >
-              <Pill className="w-4 h-4" />
-              <span>e-Prescribe (EPCS)</span>
-            </button>
-            <button
-              onClick={() => setShowScheduleModal(true)}
-              className="px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-2"
-            >
-              <Calendar className="w-4 h-4" />
-              <span>Schedule Call</span>
-            </button>
-          </div>
-        </div>
 
         {/* ============================================================== */}
         {/* INTERACTIVE PATIENT SELECTOR COMMAND BAR                        */}
@@ -962,38 +925,6 @@ export default function DoctorDashboard() {
               </div>
             </div>
           )}
-        </div>
-
-        {/* Primary Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-2 overflow-x-auto pb-1">
-          {[
-            { id: 'patient-hub', label: 'Patient Clinical Workspace', icon: Stethoscope, count: patients.length },
-            { id: 'schedule', label: 'Consultations & Schedule', icon: Calendar, count: consultations.length },
-            { id: 'eprescribe', label: 'e-Prescriptions (EPCS)', icon: Pill, count: prescriptions.length },
-            { id: 'diagnostics', label: 'Lab & Imaging Requisitions', icon: FlaskConical, count: labOrders.length + radiologyOrders.length },
-            { id: 'vitals', label: 'Telemetry Vitals & Flags', icon: HeartPulse, count: clinicalFlags.length },
-            { id: 'records', label: 'Diagnostic Records', icon: FileText, count: medicalRecords.length }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-4 border-b-2 font-bold text-xs transition whitespace-nowrap ${
-                  active
-                    ? 'border-blue-400 text-blue-400 bg-blue-500/10 rounded-t-xl'
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                <span className="ml-1 px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 font-mono font-bold">
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
         </div>
 
         {/* ============================================================== */}
@@ -1585,7 +1516,7 @@ export default function DoctorDashboard() {
           </div>
         )}
 
-      </div>
+      </Shell>
 
       {/* ============================================================== */}
       {/* MODAL 1: SCHEDULE CONSULTATION                                 */}
@@ -2384,6 +2315,6 @@ export default function DoctorDashboard() {
         recipientRole="PATIENT"
       />
 
-    </div>
+    </>
   );
 }

@@ -1,8 +1,29 @@
 import React, { Suspense, lazy } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+
+/*
+ * Every role dashboard mounts into the shared `dashboard-shell`, which already
+ * renders its own branded sidebar + sticky header. The global marketing Navbar
+ * would stack a second, differently-styled bar on top of it and duplicate the
+ * role links, so it is suppressed on dashboard routes and kept only for the
+ * standalone pages (Home, Login, prescription list/verify, call room, vitals,
+ * and the forensic/audit tools).
+ */
+const DASHBOARD_ROUTES = new Set([
+  'patient', 'doctor', 'nurse', 'admin', 'pharmacist', 'lab_technician',
+  'radiologist', 'billing_officer', 'billing', 'triage_officer',
+  'care_coordinator', 'receptionist',
+]);
+
+function GlobalNavbar() {
+  const { pathname } = useLocation();
+  const root = pathname.split('/')[1] ?? '';
+  if (DASHBOARD_ROUTES.has(root)) return null;
+  return <Navbar />;
+}
 
 /*
  * Every station is a code-split route. Previously all twenty page modules —
@@ -83,7 +104,7 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
-          <Navbar />
+          <GlobalNavbar />
           <main className="flex-1">
             <Suspense fallback={RouteFallback}>
               <Routes>

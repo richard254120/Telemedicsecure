@@ -35,10 +35,15 @@ import {
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
+import Shell from '../../dashboard-shell/Shell';
+import { VERIFICATION_GROUP, accentForRole, brandSubtitleForRole } from '../../dashboard-shell/navConfig';
+import { Button, ErrorState } from '../../dashboard-shell/ui';
+import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
-  const { user, getAuthHeaders } = useAuth();
+  const { user, getAuthHeaders, logout } = useAuth();
   const [activeTab, setActiveTab] = useState<'appointments' | 'records' | 'prescriptions' | 'consent' | 'billing'>('appointments');
 
   // State
@@ -48,7 +53,9 @@ export default function PatientDashboard() {
   const [consents, setConsents] = useState<any[]>([]);
   const [patientInvoices, setPatientInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // New Modals State
   const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
@@ -106,14 +113,14 @@ export default function PatientDashboard() {
 
   const fetchPatientData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const headers = getAuthHeaders();
       const [appRes, recRes, rxRes, conRes, invRes] = await Promise.all([
-        fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/medical-records`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/gdpr/consent`, { headers }).then(r => r.ok ? r.json() : []),
-        fetch(`${API_BASE}/billing/invoices`, { headers }).then(r => r.ok ? r.json() : [])
+        apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load appointments'),
+        apiGet<any[]>(getAuthHeaders, '/medical-records', 'Failed to load records'),
+        apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions'),
+        apiGet<any[]>(getAuthHeaders, '/gdpr/consent', 'Failed to load consent settings'),
+        apiGet<any[]>(getAuthHeaders, '/billing/invoices', 'Failed to load invoices')
       ]);
 
       setAppointments(Array.isArray(appRes) ? appRes : []);
@@ -123,7 +130,9 @@ export default function PatientDashboard() {
       setPatientInvoices(Array.isArray(invRes) ? invRes : []);
     } catch (e) {
       console.error('Error loading patient dashboard data', e);
+      setLoadError(errorMessage(e, 'Unable to load your health record'));
     } finally {
+      setLastSyncedAt(Date.now());
       setLoading(false);
     }
   };
@@ -264,69 +273,56 @@ export default function PatientDashboard() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 sm:p-10">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold uppercase tracking-wider mb-2">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Patient Portal • Zero-Knowledge Encrypted</span>
-            </div>
-            <h1 className="text-3xl font-black text-white tracking-tight">
-              Welcome, {user?.firstName} {user?.lastName}
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Protected Health Information (PHI) encrypted with AES-256-GCM envelope encryption.
-            </p>
-          </div>
+  const patientTabs: NavTab[] = [
+    { id: 'appointments', label: 'Appointments', caption: 'Your telemedicine visits', group: 'Patient Portal', icon: Calendar },
+    { id: 'records', label: 'Medical Records', caption: 'Encrypted health record', group: 'Patient Portal', icon: FileText },
+    { id: 'prescriptions', label: 'Prescriptions', caption: 'Signed e-prescriptions', group: 'Patient Portal', icon: Pill },
+    { id: 'billing', label: 'Billing & Copays', caption: 'Invoices & statements', group: 'Patient Portal', icon: CreditCard },
+    { id: 'consent', label: 'GDPR Consent & Privacy', caption: 'Consent & data rights', group: 'Patient Portal', icon: Shield },
+  ];
+  const nav: NavGroup[] = [{ name: 'Patient Portal', tabs: patientTabs }, VERIFICATION_GROUP];
+  const counts: Record<string, CountChip> = {
+    appointments: { value: appointments.length, status: 'success' },
+    records: { value: records.length, status: 'success' },
+    prescriptions: { value: prescriptions.length, status: 'success' },
+    billing: { value: patientInvoices.filter(i => i.status === 'PENDING').length, status: 'success' },
+    consent: { value: consents.length, status: 'success' },
+  };
+  const signOut = () => { logout(); navigate('/login', { replace: true }); };
+  const joinActiveCall = () => {
+    const active = appointments.find(a => a.status === 'IN_PROGRESS') || appointments.find(a => a.status === 'SCHEDULED') || appointments[0];
+    if (active) navigate(`/call/${active.id}`);
+    else setActionMessage('No consultations currently booked. Click "Book Consultation" to schedule one.');
+  };
+  const headerActions = (
+    <>
+      <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
+      <Button variant="secondary" icon={Video} onClick={joinActiveCall}>Join Call</Button>
+      <Button variant="success" icon={PlusCircle} onClick={() => setShowBookModal(true)}>Book Consultation</Button>
+    </>
+  );
 
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setShowChatDrawer(true)}
-              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Care Chat</span>
-            </button>
-            <button
-              onClick={() => setShow2FAModal(true)}
-              className="px-3.5 py-2.5 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>2FA Security</span>
-            </button>
-            <button
-              onClick={() => setShowBookModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-1.5"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Book Consultation</span>
-            </button>
-            <button
-              onClick={fetchPatientData}
-              className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={() => {
-                const active = appointments.find(a => a.status === 'IN_PROGRESS') || appointments.find(a => a.status === 'SCHEDULED') || appointments[0];
-                if (active) {
-                  navigate(`/call/${active.id}`);
-                } else {
-                  setActionMessage('No consultations currently booked. Click "Book Consultation" to schedule one.');
-                }
-              }}
-              className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/20 flex items-center space-x-2"
-            >
-              <Video className="w-4 h-4" />
-              <span>Join Active Call</span>
-            </button>
-          </div>
-        </div>
+  return (
+    <>
+      <Shell
+        user={user}
+        nav={nav}
+        accent={accentForRole(user?.role)}
+        brandTitle="TeleMedSecure"
+        brandSubtitle={brandSubtitleForRole(user?.role)}
+        activeTab={activeTab}
+        onSelectTab={id => setActiveTab(id as typeof activeTab)}
+        counts={counts}
+        lastSyncedAt={lastSyncedAt}
+        isRefreshing={loading}
+        onRefresh={fetchPatientData}
+        headerActions={headerActions}
+        onOpenTwoFactor={() => setShow2FAModal(true)}
+        onSignOut={signOut}
+      >
+        {loadError && !loading && (
+          <ErrorState message={loadError} onRetry={fetchPatientData} />
+        )}
 
         {actionMessage && (
           <div className="p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs flex items-center justify-between shadow-lg">
@@ -337,36 +333,6 @@ export default function PatientDashboard() {
             <button onClick={() => setActionMessage(null)} className="text-slate-400 hover:text-white">✕</button>
           </div>
         )}
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-2">
-          {[
-            { id: 'appointments', label: 'Appointments', icon: Calendar, count: appointments.length },
-            { id: 'records', label: 'Medical Records', icon: FileText, count: records.length },
-            { id: 'prescriptions', label: 'Prescriptions', icon: Pill, count: prescriptions.length },
-            { id: 'billing', label: 'Billing & Copays', icon: CreditCard, count: patientInvoices.filter(i => i.status === 'PENDING').length },
-            { id: 'consent', label: 'GDPR Consent & Privacy', icon: Shield, count: consents.length }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${active
-                  ? 'border-cyan-400 text-cyan-400 bg-cyan-500/5'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 font-mono">
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
 
         {/* Tab 1: Appointments */}
         {activeTab === 'appointments' && (
@@ -855,7 +821,7 @@ export default function PatientDashboard() {
             </div>
           </div>
         )}
-      </div>
+      </Shell>
 
       {/* Patient Statement Modal */}
       {selectedStatementView && (
@@ -1271,6 +1237,6 @@ export default function PatientDashboard() {
         </div>
       )}
 
-    </div>
+    </>
   );
 }

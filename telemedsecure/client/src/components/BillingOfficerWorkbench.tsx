@@ -28,6 +28,8 @@ import {
   Receipt,
   Download
 } from 'lucide-react';
+import { Badge } from '../dashboard-shell/ui';
+import { handoffBadge, handoffTone } from '../dashboard-shell/handoff';
 
 interface BillingStats {
   summary: {
@@ -720,17 +722,7 @@ export default function BillingOfficerWorkbench() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            clm.status === 'SETTLED' || clm.status === 'APPROVED'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : clm.status === 'DENIED'
-                              ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
-                              : clm.status === 'SUBMITTED'
-                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}>
-                            {clm.status}
-                          </span>
+                          <Badge tone={handoffTone(clm.status)}>{handoffBadge(clm.status).label}</Badge>
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <button
@@ -834,15 +826,7 @@ export default function BillingOfficerWorkbench() {
                           ${inv.patientDue.toFixed(2)}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                            inv.status === 'PAID'
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                              : inv.status === 'PARTIALLY_PAID'
-                              ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20'
-                              : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                          }`}>
-                            {inv.status}
-                          </span>
+                          <Badge tone={handoffTone(inv.status)}>{handoffBadge(inv.status).label}</Badge>
                         </td>
                         <td className="px-4 py-3.5 text-right">
                           <button
@@ -1176,13 +1160,7 @@ export default function BillingOfficerWorkbench() {
               </div>
               <div className="text-right">
                 <span className="text-slate-400 block font-semibold text-[10px] uppercase">Status</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  selectedInvoiceForView.status === 'PAID'
-                    ? 'bg-emerald-500/10 text-emerald-400'
-                    : 'bg-amber-500/10 text-amber-400'
-                }`}>
-                  {selectedInvoiceForView.status}
-                </span>
+                <Badge tone={handoffTone(selectedInvoiceForView.status)}>{handoffBadge(selectedInvoiceForView.status).label}</Badge>
               </div>
             </div>
 

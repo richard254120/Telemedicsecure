@@ -17,6 +17,8 @@ import {
   Layers,
   Printer
 } from 'lucide-react';
+import { Badge } from '../../dashboard-shell/ui';
+import { handoffBadge, handoffTone } from '../../dashboard-shell/handoff';
 
 export default function LabStationWorkbench() {
   const { user, getAuthHeaders } = useAuth();
@@ -331,15 +333,7 @@ export default function LabStationWorkbench() {
                       </span>
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        order.status === 'COMPLETED'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : order.status === 'PROCESSING' || order.status === 'SAMPLE_COLLECTED'
-                          ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 animate-pulse'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {order.status}
-                      </span>
+                      <Badge tone={handoffTone(order.status)}>{handoffBadge(order.status).label}</Badge>
                     </td>
                     <td className="px-4 py-3.5 text-right space-x-2">
                       {order.status !== 'COMPLETED' ? (

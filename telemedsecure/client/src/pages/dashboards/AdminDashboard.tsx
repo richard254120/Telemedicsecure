@@ -14,9 +14,10 @@
  */
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { LockKeyhole, LogIn } from 'lucide-react';
+import { Calendar, FileSearch, LockKeyhole, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import Shell, { isTabId, type TabId } from './admin/components/Shell';
+import Shell from '../../dashboard-shell/Shell';
+import { ADMIN_NAV, isAdminSectionId, type AdminSectionId } from '../../dashboard-shell/navConfig';
 import { Button, SkeletonGrid, SkeletonRows, ToastViewport } from './admin/components/ui';
 import { AUTH_EXPIRED_EVENT } from './admin/api';
 import { selectRows, useAdminData, type ResourceKey } from './admin/hooks/useAdminData';
@@ -43,7 +44,7 @@ const PrescriptionDocumentModal = lazy(() =>
 );
 
 /** Which endpoints a panel actually renders. Nothing is fetched off-screen. */
-const TAB_RESOURCES: Record<TabId, ResourceKey[]> = {
+const TAB_RESOURCES: Record<AdminSectionId, ResourceKey[]> = {
   overview: ['stats', 'chain'],
   compliance: ['violations', 'alerts', 'chain'],
   investigation: ['incidents', 'alerts'],
@@ -62,8 +63,8 @@ const PANEL_FALLBACK = (
   </div>
 );
 
-function initialTab(value: string | null): TabId {
-  return isTabId(value) ? value : 'overview';
+function initialTab(value: string | null): AdminSectionId {
+  return isAdminSectionId(value) ? value : 'overview';
 }
 
 const AdminDashboard: React.FC = () => {
@@ -95,7 +96,7 @@ const AdminDashboard: React.FC = () => {
     ensure(TAB_RESOURCES[activeTab]);
   }, [activeTab, ensure]);
 
-  const selectTab = useCallback((tab: TabId) => {
+  const selectTab = useCallback((tab: AdminSectionId) => {
     setSearchParams(previous => {
       const next = new URLSearchParams(previous);
       if (tab === 'overview') next.delete('tab');
@@ -192,7 +193,7 @@ const AdminDashboard: React.FC = () => {
       users: { value: roster.filter(item => item.verificationStatus === 'PENDING_REVIEW').length, status: state.users.status },
       patients: { value: roster.filter(item => item.role === 'PATIENT').length, status: state.users.status },
       sms: { value: smsLogs.filter(log => log.status === 'FAILED').length, status: state.smsLogs.status },
-    } as Record<TabId, { value: number; status: typeof state.stats.status }>;
+    } as Record<AdminSectionId, { value: number; status: typeof state.stats.status }>;
   }, [state]);
 
   const panel = sessionExpired ? (
@@ -256,22 +257,39 @@ const AdminDashboard: React.FC = () => {
     </Suspense>
   );
 
+  const headerActions = (
+    <>
+      <Button variant="secondary" icon={Calendar} onClick={openCalendar} className="hidden sm:inline-flex">
+        Calendar
+      </Button>
+      <Button variant="success" icon={FileSearch} onClick={openDossier} title="HIPAA §164.312 audit dossier">
+        Audit Dossier
+      </Button>
+      <Button variant="primary" icon={UserPlus} onClick={openProvision}>
+        Provision Staff
+      </Button>
+    </>
+  );
+
   return (
     <>
       <Shell
         user={user}
+        nav={ADMIN_NAV}
+        accent="purple"
+        brandTitle="TeleMedSecure"
+        brandSubtitle="Admin Console"
         activeTab={activeTab}
-        onSelectTab={selectTab}
+        onSelectTab={id => selectTab(id as AdminSectionId)}
         counts={counts}
         lastSyncedAt={lastSyncedAt}
         isRefreshing={isBusy}
         sessionExpired={sessionExpired}
         onRefresh={refreshActive}
-        onOpenProvision={openProvision}
-        onOpenDossier={openDossier}
+        headerActions={headerActions}
         onOpenTwoFactor={openTwoFactor}
         onSignOut={signOut}
-        onOpenCalendar={openCalendar}
+        mainId="admin-main"
       >
         {panel}
       </Shell>

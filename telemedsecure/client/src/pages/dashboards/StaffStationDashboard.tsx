@@ -38,6 +38,10 @@ import RadiologyWorkbench from '../../components/stations/RadiologyWorkbench';
 import PharmacyWorkbench from '../../components/stations/PharmacyWorkbench';
 import TriageWorkbench from '../../components/stations/TriageWorkbench';
 import CareCoordinatorWorkbench from '../../components/stations/CareCoordinatorWorkbench';
+import Shell from '../../dashboard-shell/Shell';
+import { accentForRole, brandSubtitleForRole, buildNav } from '../../dashboard-shell/navConfig';
+import { Button } from '../../dashboard-shell/ui';
+import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
 
 
 interface StaffStationDashboardProps {
@@ -46,9 +50,10 @@ interface StaffStationDashboardProps {
 
 export default function StaffStationDashboard({ stationRole }: StaffStationDashboardProps) {
   const navigate = useNavigate();
-  const { user, getAuthHeaders } = useAuth();
+  const { user, getAuthHeaders, logout } = useAuth();
 
   const [loading, setLoading] = useState<boolean>(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [show2FAModal, setShow2FAModal] = useState<boolean>(false);
@@ -79,13 +84,13 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
 
   const fetchStationData = async () => {
     setLoading(true);
+    setActionError(null);
     try {
-      const headers = getAuthHeaders();
       const [rxRes, cRes, pRes, dRes] = await Promise.all([
-        fetch(`${API_BASE}/prescriptions`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/consultations`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/consultations/patients`, { headers }).then(r => r.ok ? r.json() : []).catch(() => []),
-        fetch(`${API_BASE}/consultations/doctors`, { headers }).then(r => r.ok ? r.json() : []).catch(() => [])
+        apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions'),
+        apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
+        apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients'),
+        apiGet<any[]>(getAuthHeaders, '/consultations/doctors', 'Failed to load doctors')
       ]);
 
       const validPrescriptions = Array.isArray(rxRes) ? rxRes : [];
@@ -106,7 +111,9 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
       }
     } catch (err: any) {
       console.warn('Failed to load station datasets:', err);
+      setActionError(errorMessage(err, 'Unable to load station data'));
     } finally {
+      setLastSyncedAt(Date.now());
       setLoading(false);
     }
   };
@@ -259,59 +266,37 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
   };
 
 
+  const signOut = () => { logout(); navigate('/login', { replace: true }); };
+  const headerActions = (
+    <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 p-6 sm:p-10 font-sans">
-      <div className="max-w-7xl mx-auto space-y-8">
-        {/* Top Header Card */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-slate-800">
-          <div className="space-y-1">
-            <div className="flex items-center space-x-3">
-              <div className={`w-12 h-12 rounded-2xl bg-gradient-to-tr ${station.color} flex items-center justify-center text-white shadow-xl`}>
-                <IconComponent className="w-6 h-6" />
-              </div>
-              <div>
-                <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 font-mono">
-                  {station.dept}
-                </span>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  {station.title}
-                </h1>
-              </div>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
+    <>
+      <Shell
+        user={user}
+        nav={buildNav(stationRole)}
+        accent={accentForRole(stationRole)}
+        brandTitle="TeleMedSecure"
+        brandSubtitle={brandSubtitleForRole(stationRole)}
+        lastSyncedAt={lastSyncedAt}
+        isRefreshing={loading}
+        onRefresh={fetchStationData}
+        headerActions={headerActions}
+        onOpenTwoFactor={() => setShow2FAModal(true)}
+        onSignOut={signOut}
+      >
+        {/* Station identity */}
+        <div className="flex items-center gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 px-5 py-4">
+          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr ${station.color} text-white shadow-xl`}>
+            <IconComponent className="h-6 w-6" />
+          </div>
+          <div className="min-w-0">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-400 font-mono">{station.dept}</span>
+            <h2 className="text-lg font-black text-white tracking-tight">{station.title}</h2>
+            <p className="text-xs text-slate-400">
               Active Clinician: <span className="font-semibold text-white">{user?.firstName} {user?.lastName}</span> ({stationRole}) • Verified License: <span className="font-mono text-cyan-300">{user?.medicalLicenseNo || 'HOSP-STATION-ACTIVE'}</span>
             </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              onClick={fetchStationData}
-              className="p-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-slate-300 transition"
-              title="Refresh Station Data"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={() => setShowChatDrawer(true)}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-cyan-300 font-semibold text-xs transition flex items-center space-x-1.5"
-            >
-              <MessageSquare className="w-4 h-4 text-cyan-400" />
-              <span>Care Chat</span>
-            </button>
-            <button
-              onClick={() => setShow2FAModal(true)}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-purple-300 font-semibold text-xs transition flex items-center space-x-1.5"
-            >
-              <Lock className="w-4 h-4 text-purple-400" />
-              <span>Security 2FA</span>
-            </button>
-            <button
-              onClick={() => navigate('/calendar')}
-              className="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 text-cyan-300 font-semibold text-xs transition flex items-center space-x-1.5"
-            >
-              <Calendar className="w-4 h-4 text-cyan-400" />
-              <span>Master Schedule</span>
-            </button>
           </div>
         </div>
 
@@ -568,6 +553,8 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
           </div>
         )}
 
+      </Shell>
+
         {/* 2FA Setup Modal */}
         <TwoFactorSetupModal
           isOpen={show2FAModal}
@@ -582,7 +569,6 @@ export default function StaffStationDashboard({ stationRole }: StaffStationDashb
           recipientName={`Attending Care Team (${stationRole})`}
           recipientRole={stationRole}
         />
-      </div>
-    </div>
+    </>
   );
 }

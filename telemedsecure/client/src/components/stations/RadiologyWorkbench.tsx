@@ -16,6 +16,8 @@ import {
   Eye,
   Activity
 } from 'lucide-react';
+import { Badge } from '../../dashboard-shell/ui';
+import { handoffBadge, handoffTone } from '../../dashboard-shell/handoff';
 
 export default function RadiologyWorkbench() {
   const { user, getAuthHeaders } = useAuth();
@@ -319,15 +321,7 @@ export default function RadiologyWorkbench() {
                       {study.dicomStudyUid}
                     </td>
                     <td className="px-4 py-3.5">
-                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        study.status === 'FINALIZED'
-                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                          : study.status === 'URGENT_FLAGGED'
-                          ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse'
-                          : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                      }`}>
-                        {study.status}
-                      </span>
+                      <Badge tone={handoffTone(study.status)}>{handoffBadge(study.status).label}</Badge>
                     </td>
                     <td className="px-4 py-3.5 text-right space-x-2">
                       {study.status !== 'FINALIZED' && study.status !== 'URGENT_FLAGGED' ? (

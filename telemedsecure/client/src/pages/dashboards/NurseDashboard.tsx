@@ -25,15 +25,21 @@ import {
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
+import Shell from '../../dashboard-shell/Shell';
+import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
+import { Button, ErrorState } from '../../dashboard-shell/ui';
+import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import type { CountChip, NavTab } from '../../dashboard-shell/types';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
-  const { user, getAuthHeaders } = useAuth();
+  const { user, getAuthHeaders, logout } = useAuth();
 
   const [activeTab, setActiveTab] = useState<'vitals' | 'patients'>('vitals');
   const [patients, setPatients] = useState<any[]>([]);
   const [consultations, setConsultations] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
 
@@ -50,6 +56,7 @@ export default function NurseDashboard() {
 
   const [submissionStatus, setSubmissionStatus] = useState<string | null>(null);
   const [alertDispatchStatus, setAlertDispatchStatus] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [recentEntries, setRecentEntries] = useState<any[]>([]);
 
   useEffect(() => {
@@ -58,16 +65,15 @@ export default function NurseDashboard() {
 
   const fetchNurseData = async () => {
     setLoading(true);
+    setLoadError(null);
     try {
-      const headers = getAuthHeaders();
-      const res = await fetch(`${API_BASE}/consultations`, { headers });
-      if (res.ok) {
-        const data = await res.json();
-        setConsultations(Array.isArray(data) ? data : []);
-      }
+      const data = await apiGet<any>(getAuthHeaders, '/consultations', 'Failed to load consultations');
+      setConsultations(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error(e);
+      setLoadError(errorMessage(e, 'Unable to load your patient list'));
     } finally {
+      setLastSyncedAt(Date.now());
       setLoading(false);
     }
   };
@@ -213,82 +219,44 @@ export default function NurseDashboard() {
     }
   };
 
+  const nurseTabs: NavTab[] = [
+    { id: 'vitals', label: 'Vitals Entry & Triage', caption: 'Capture NEWS2 vitals', group: 'Nursing Station', icon: HeartPulse },
+    { id: 'patients', label: 'Assigned Patients', caption: 'Your patient roster', group: 'Nursing Station', icon: Users },
+  ];
+  const nav = buildStationNav('NURSE', nurseTabs);
+  const counts: Record<string, CountChip> = {
+    vitals: { value: recentEntries.length, status: 'success' },
+    patients: { value: consultations.length, status: 'success' },
+  };
+  const signOut = () => { logout(); navigate('/login', { replace: true }); };
+  const headerActions = (
+    <>
+      <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
+      <Button variant="success" icon={PlusCircle} onClick={() => setActiveTab('vitals')}>Capture Vitals</Button>
+    </>
+  );
+
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 p-6 sm:p-10">
-      <div className="max-w-6xl mx-auto space-y-8">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <div className="inline-flex items-center space-x-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-semibold uppercase tracking-wider mb-2">
-              <HeartPulse className="w-4 h-4" />
-              <span>Clinical Nursing Station • Triage & Vitals</span>
-            </div>
-            <h1 className="text-3xl font-black text-white tracking-tight">
-              Nurse {user?.firstName} {user?.lastName}
-            </h1>
-            <p className="text-xs text-slate-400 mt-1">
-              Envelope-encrypted vital sign capture with automated clinical flags (separate from security alerts).
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowChatDrawer(true)}
-              className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <MessageSquare className="w-3.5 h-3.5" />
-              <span>Care Chat</span>
-            </button>
-            <button
-              onClick={() => setShow2FAModal(true)}
-              className="px-3.5 py-2 rounded-xl bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white border border-purple-500/30 text-xs font-semibold transition flex items-center space-x-1.5"
-            >
-              <KeyRound className="w-3.5 h-3.5" />
-              <span>2FA Security</span>
-            </button>
-            <button
-              onClick={fetchNurseData}
-              className="p-2.5 rounded-xl bg-slate-800 border border-slate-700 hover:bg-slate-700 text-slate-300 transition"
-              title="Refresh"
-            >
-              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            </button>
-            <button
-              onClick={() => setActiveTab('vitals')}
-              className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition shadow-lg shadow-emerald-600/20 flex items-center space-x-2"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Capture Vitals</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 gap-2">
-          {[
-            { id: 'vitals', label: 'Vitals Entry & Triage', icon: HeartPulse, count: recentEntries.length },
-            { id: 'patients', label: 'Assigned Patients', icon: Users, count: consultations.length || 1 }
-          ].map(tab => {
-            const Icon = tab.icon;
-            const active = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 py-3 px-5 border-b-2 font-semibold text-xs transition ${active
-                  ? 'border-emerald-400 text-emerald-400 bg-emerald-500/5'
-                  : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
-                  }`}
-              >
-                <Icon className="w-4 h-4" />
-                <span>{tab.label}</span>
-                <span className="ml-1.5 px-2 py-0.5 rounded-full text-[10px] bg-slate-800 text-slate-300 font-mono">
-                  {tab.count}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+    <>
+      <Shell
+        user={user}
+        nav={nav}
+        accent={accentForRole(user?.role)}
+        brandTitle="TeleMedSecure"
+        brandSubtitle={brandSubtitleForRole(user?.role)}
+        activeTab={activeTab}
+        onSelectTab={id => setActiveTab(id as 'vitals' | 'patients')}
+        counts={counts}
+        lastSyncedAt={lastSyncedAt}
+        isRefreshing={loading}
+        onRefresh={fetchNurseData}
+        headerActions={headerActions}
+        onOpenTwoFactor={() => setShow2FAModal(true)}
+        onSignOut={signOut}
+      >
+        {loadError && !loading && (
+          <ErrorState message={loadError} onRetry={fetchNurseData} />
+        )}
 
         {/* Tab 1: Vitals Entry */}
         {activeTab === 'vitals' && (
@@ -596,7 +564,7 @@ export default function NurseDashboard() {
             </div>
           </div>
         )}
-      </div>
+      </Shell>
 
       {/* Two-Factor Authentication Modal */}
       <TwoFactorSetupModal
@@ -612,6 +580,6 @@ export default function NurseDashboard() {
         recipientName="Attending Care Team & Triage"
         recipientRole="NURSE"
       />
-    </div>
+    </>
   );
 }
