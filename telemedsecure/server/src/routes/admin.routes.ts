@@ -236,26 +236,39 @@ router.get('/stats', async (req, res) => {
 
 // 1. List all users
 router.get('/users', async (req, res) => {
-  const users = await prisma.user.findMany({
-    select: {
-      id: true,
-      email: true,
-      firstName: true,
-      lastName: true,
-      role: true,
-      isActive: true,
-      lockedUntil: true,
-      verificationStatus: true,
-      medicalLicenseNo: true,
-      licenseJurisdiction: true,
-      specialty: true,
-      verifiedAt: true,
-      verifiedById: true,
-      createdAt: true,
-    },
-    orderBy: { createdAt: 'desc' },
-  });
-  res.json(users);
+  try {
+    const users = await prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+        isActive: true,
+        lockedUntil: true,
+        verificationStatus: true,
+        medicalLicenseNo: true,
+        licenseJurisdiction: true,
+        specialty: true,
+        verifiedAt: true,
+        verifiedById: true,
+        createdAt: true,
+        // Read only to derive the boolean below; never shipped to the client.
+        totpSecret: true,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // The admin console states 2FA enrolment truthfully: enrolled means a secret
+    // exists. The secret itself is a credential and must not leave the API.
+    res.json(users.map(({ totpSecret, ...user }) => ({
+      ...user,
+      isTotpEnabled: Boolean(totpSecret),
+    })));
+  } catch (err: any) {
+    console.error('Error listing users:', err);
+    res.status(500).json({ error: 'Failed to load the workforce directory' });
+  }
 });
 
 // 2. Provision staff (admin creates account with password or generated temporary credentials)
@@ -360,7 +373,9 @@ router.put('/users/:id/verify-credentials', async (req, res) => {
 });
 
 // 4. Staff invitation endpoints (create, list, revoke)
-// Default expiration: 5 minutes (enforces tight security for single-use onboarding tokens)
+// Expiration comes from INVITE_DEFAULT_EXPIRATION_MINUTES (60 minutes when unset)
+// or from the caller's explicit expiresInMinutes / expiresInHours. The resolved
+// value is returned in the response so clients never have to guess or hard-code it.
 router.post('/invitations', async (req, res) => {
   try {
     const { email, role, expiresInMinutes, expiresInHours } = req.body;
@@ -440,12 +455,36 @@ router.put('/users/:id/status', async (req, res) => {
   res.json({ message: 'Status updated', isActive: user.isActive });
 });
 
-// 7. Generate TOTP secret for a user
+// 7. Re-issue a TOTP enrolment secret for a user.
+// Login verifies any stored secret, so this write takes effect immediately: the
+// target must enrol with the new secret before their next sign-in, which is why
+// the secret is returned once and never logged here.
 router.post('/users/:id/totp', async (req, res) => {
-  const secret = speakeasy.generateSecret().base32;
-  await prisma.user.update({ where: { id: req.params.id }, data: { totpSecret: secret } });
-  await logAudit('TOTP_GENERATED', `USER:${req.params.id}`, (req as any).user.id, req.ip);
-  res.json({ message: 'TOTP secret generated', secret });
+  try {
+    const targetId = req.params.id;
+    const existing = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { totpSecret: true }
+    });
+    if (!existing) {
+      return res.status(404).json({ error: 'No account with that identifier' });
+    }
+
+    const secret = speakeasy.generateSecret({ length: 20 }).base32;
+    await prisma.user.update({ where: { id: targetId }, data: { totpSecret: secret } });
+    await logAudit('TOTP_GENERATED', `USER:${targetId}`, (req as any).user.id, req.ip);
+
+    res.json({
+      message: existing.totpSecret
+        ? 'Previous 2FA enrolment invalidated. Deliver this secret before the next sign-in.'
+        : '2FA enrolment created. Deliver this secret before the next sign-in.',
+      secret,
+      replacedExistingEnrolment: Boolean(existing.totpSecret)
+    });
+  } catch (err: any) {
+    console.error('Error re-issuing TOTP:', err);
+    res.status(500).json({ error: 'Failed to re-issue the 2FA enrolment secret' });
+  }
 });
 
 // Helper function to completely and permanently purge a user and all cascade relations

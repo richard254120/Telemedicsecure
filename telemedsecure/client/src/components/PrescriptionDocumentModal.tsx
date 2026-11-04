@@ -64,8 +64,8 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto print:p-0 print:bg-white print:static">
-      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden my-8 print:border-none print:shadow-none print:my-0 print:rounded-none print:bg-white print:text-black">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto print:static print:block print:overflow-visible print:bg-white print:p-0 print:backdrop-blur-none">
+      <div className="relative w-full max-w-3xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl overflow-hidden my-8 print:max-w-none print:my-0 print:overflow-visible print:rounded-none print:border-none print:bg-white print:shadow-none print:text-black">
         
         {/* Action Toolbar (Hidden during print) */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-950/60 print:hidden">
@@ -101,7 +101,7 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
         </div>
 
         {/* Prescription Printable Document Body */}
-        <div className="p-8 sm:p-10 space-y-8 bg-slate-900 text-slate-100 print:bg-white print:text-slate-900 print:p-6" id="printable-rx">
+        <div className="print-document p-8 sm:p-10 space-y-8 bg-slate-900 text-slate-100 print:bg-white print:text-slate-900 print:p-6" id="printable-rx">
           
           {/* Clinic & Header */}
           <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-6 border-b border-slate-800 print:border-slate-300 pb-6">
@@ -143,13 +143,13 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
                 Dr. {rx.doctor?.firstName || 'Attending'} {rx.doctor?.lastName || 'Physician'}
               </div>
               <div className="text-xs text-slate-400 print:text-slate-600 font-mono">
-                {rx.doctor?.email || 'doctor@telemedsecure.org'}
+                {rx.doctor?.email || '—'}
               </div>
               <div className="text-[11px] text-slate-400 print:text-slate-600">
-                NPI No: <strong className="text-slate-300 print:text-slate-800 font-mono">{rx.doctor?.medicalLicenseNo || 'NPI-1928301948'}</strong>
+                Licence / NPI: <strong className="text-slate-300 print:text-slate-800 font-mono">{rx.doctor?.medicalLicenseNo || 'NOT ON RECORD'}</strong>
               </div>
               <div className="text-[11px] text-slate-400 print:text-slate-600">
-                Specialty: <span className="text-slate-300 print:text-slate-800">{rx.doctor?.specialty || 'General Telehealth'}</span>
+                Specialty: <span className="text-slate-300 print:text-slate-800">{rx.doctor?.specialty || 'Not on record'}</span>
               </div>
             </div>
 
@@ -160,16 +160,18 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
                 <span>Patient Demographics</span>
               </div>
               <div className="text-sm font-bold text-white print:text-slate-900">
-                {rx.patient?.firstName || 'Patient'} {rx.patient?.lastName || ''}
+                {`${rx.patient?.firstName || ''} ${rx.patient?.lastName || ''}`.trim() || 'PATIENT NOT RESOLVED'}
               </div>
               <div className="text-xs text-slate-400 print:text-slate-600 font-mono">
-                {rx.patient?.email || 'patient@telemedsecure.org'}
+                {rx.patient?.email || '—'}
               </div>
               <div className="text-[11px] text-slate-400 print:text-slate-600">
-                MRN / ID: <strong className="text-slate-300 print:text-slate-800 font-mono">MRN-{rx.patientId ? rx.patientId.substring(0, 8) : '00000000'}</strong>
+                MRN / ID: <strong className="text-slate-300 print:text-slate-800 font-mono">{rx.patientId ? `MRN-${rx.patientId.substring(0, 8)}` : 'UNAVAILABLE'}</strong>
               </div>
               <div className="text-[11px] text-slate-400 print:text-slate-600">
-                Treatment Authorization: <span className="text-emerald-400 print:text-emerald-700 font-semibold">Consent Verified</span>
+                Treatment Authorization: <span className="text-slate-300 print:text-slate-800 font-semibold">
+                  {rx.consultationId ? `Linked to consultation ${String(rx.consultationId).substring(0, 8)}` : 'No consultation linked'}
+                </span>
               </div>
             </div>
           </div>
@@ -180,10 +182,10 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
               <div>
                 <span className="text-3xl font-serif font-black text-cyan-400 print:text-slate-900 mr-2">℞</span>
                 <span className="text-xl font-black text-white print:text-black">
-                  {med.name || med.drugName || rx.medicationName || 'Prescribed Pharmaceutical'}
+                  {med.name || med.drugName || rx.medicationName || 'NO MEDICATION LINE ON RECORD'}
                 </span>
                 <span className="ml-3 px-2.5 py-0.5 rounded text-xs font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 print:border print:border-slate-400 print:text-slate-900">
-                  {med.dosage || rx.dosage || 'Standard Clinical Dose'}
+                  {med.dosage || rx.dosage || 'DOSAGE NOT SPECIFIED'}
                 </span>
               </div>
 
@@ -197,21 +199,36 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2 border-t border-cyan-500/20 print:border-slate-300 text-xs">
               <div>
                 <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold">Directions (Sig)</span>
-                <strong className="text-white print:text-slate-900">{med.frequency || rx.frequency || 'Take as clinically directed by physician'}</strong>
+                <strong className="text-white print:text-slate-900">{med.instructions || rx.frequency || 'Not recorded on the prescription line'}</strong>
               </div>
               <div>
                 <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold">Dispense Quantity</span>
-                <strong className="text-white print:text-slate-900">{med.quantity || rx.quantity || '30 Day Supply'}</strong>
+                <strong className="text-white print:text-slate-900">{med.quantity || rx.quantity || 'Not recorded'}</strong>
               </div>
               <div>
                 <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold">Refills Authorized</span>
-                <strong className="text-white print:text-slate-900">{med.refills !== undefined ? med.refills : (rx.refills || 0)}</strong>
+                <strong className="text-white print:text-slate-900">{med.refills !== undefined ? med.refills : (rx.refills !== undefined ? rx.refills : 'Not recorded')}</strong>
               </div>
               <div>
-                <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold">Substitution Allowed</span>
-                <strong className="text-white print:text-slate-900">Yes (Generic Permitted)</strong>
+                <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold">Substitution</span>
+                <strong className="text-white print:text-slate-900">{rx.substitutionPermitted === undefined ? 'Not recorded' : (rx.substitutionPermitted ? 'Generic permitted' : 'Generic barred')}</strong>
               </div>
             </div>
+
+            {Array.isArray(rx.items) && rx.items.length > 1 && (
+              <div className="pt-2 border-t border-cyan-500/20 print:border-slate-300">
+                <span className="text-slate-400 print:text-slate-600 block text-[10px] uppercase font-bold mb-1">
+                  Additional scheduled medications ({rx.items.length - 1})
+                </span>
+                <ul className="space-y-1 text-[11px] text-slate-300 print:text-slate-700">
+                  {rx.items.slice(1).map((item: any) => (
+                    <li key={item.id} className="font-mono">
+                      {item.medication} — {item.dosage}{item.instructions ? ` · ${item.instructions}` : ''}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
 
             {rx.notes && (
               <div className="pt-2 text-xs text-slate-300 print:text-slate-700 italic border-t border-cyan-500/20 print:border-slate-300">
@@ -223,20 +240,29 @@ export const PrescriptionDocumentModal: React.FC<PrescriptionModalProps> = ({
           {/* Cryptographic Authenticity & QR Verification Barcode */}
           <div className="p-6 rounded-2xl bg-slate-950/70 border border-slate-800 print:bg-slate-50 print:border-slate-300 flex flex-col sm:flex-row sm:items-center justify-between gap-6">
             <div className="space-y-2 flex-1">
-              <div className="flex items-center space-x-2 text-xs font-bold text-emerald-400 print:text-emerald-700 uppercase tracking-wider">
-                <ShieldCheck className="w-4 h-4" />
-                <span>Cryptographic Proof of Authenticity (Ed25519)</span>
+              <div className="flex items-center space-x-2 text-xs font-bold uppercase tracking-wider">
+                <ShieldCheck className={`w-4 h-4 ${rx.signatureStatus === 'VALID' ? 'text-emerald-400' : 'text-red-400'}`} />
+                <span className={rx.signatureStatus === 'TAMPERED' ? 'text-red-400' : 'text-emerald-400'}>
+                  Cryptographic proof of authenticity ({rx.signatureStatus === 'VALID' ? 'Ed25519 signature verified' : rx.signatureStatus === 'TAMPERED' ? 'Ed25519 signature FAILED' : 'Signature not verified'})
+                </span>
               </div>
               <p className="text-[11px] text-slate-400 print:text-slate-600 leading-relaxed">
-                This electronic prescription was signed using the physician’s cryptographic Ed25519 private key in compliance with DEA EPCS dual-factor authorization. Scan the QR code or visit the verification portal to audit the digital signature against the Merkle tree state.
+                {rx.signatureStatus === 'VALID'
+                  ? 'The canonical payload re-hashed at audit time matches the physician\u2019s Ed25519 signature, in line with DEA EPCS dual-factor authorization (21 CFR Part 1311). Scan the QR code to repeat this check against the verification portal.'
+                  : rx.signatureStatus === 'TAMPERED'
+                    ? 'Verification FAILED: the recomputed canonical hash does not satisfy the stored signature. Treat this document as untrusted and open a forensic incident before dispensing.'
+                    : 'No signature record is attached to this prescription, or the prescriber has no public key on file. Authenticity cannot be asserted on this printout.'}
               </p>
               
               <div className="p-2.5 rounded-xl bg-slate-900 print:bg-white border border-slate-800 print:border-slate-300 font-mono text-[10px] space-y-1">
                 <div className="text-slate-400 print:text-slate-600 truncate">
-                  Digital Signature: <span className="text-emerald-400 print:text-emerald-700 font-bold">{rx.digitalSignature || 'ED25519-AUTHENTICATED-EPCS-SIGNATURE-HASH'}</span>
+                  Canonical payload hash: <span className={rx.canonicalHash ? 'text-cyan-400 print:text-cyan-700' : 'text-slate-500'}>{rx.canonicalHash || 'NOT COMPUTED'}</span>
                 </div>
                 <div className="text-slate-400 print:text-slate-600 truncate">
-                  Public Key ID: <span className="text-cyan-400 print:text-cyan-700">{rx.doctor?.id ? `KEY-${rx.doctor.id.substring(0, 16)}` : 'KEY-PRACTITIONER-VERIFIED'}</span>
+                  Digital Signature: <span className="text-emerald-400 print:text-emerald-700 font-bold">{rx.digitalSignature || 'NOT SIGNED'}</span>
+                </div>
+                <div className="text-slate-400 print:text-slate-600 truncate">
+                  Public Key ID: <span className="text-cyan-400 print:text-cyan-700">{rx.doctor?.id ? `KEY-${rx.doctor.id.substring(0, 16)}` : 'NO PRACTITIONER KEY'}</span>
                 </div>
               </div>
             </div>

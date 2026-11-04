@@ -8,6 +8,28 @@ import { setIO } from './socket';
 
 dotenv.config();
 
+// generateTokens() falls back to 'secret' / 'rsecret' when the environment is
+// unset, and anyone who knows the signing key can forge an ADMIN access token.
+// Fail at boot instead of running on a guessable or copy-pasted key.
+if (process.env.NODE_ENV === 'production') {
+  const PLACEHOLDER_SECRETS = [
+    'secret', 'rsecret', 'changeme',
+    'your_super_secret_jwt_key_here', 'your_super_secret_refresh_key_here',
+  ];
+  const weak = ['JWT_SECRET', 'JWT_REFRESH_SECRET'].filter((name) => {
+    const value = process.env[name] ?? '';
+    return value.length < 24 || PLACEHOLDER_SECRETS.includes(value);
+  });
+  if (weak.length > 0) {
+    console.error(`Refusing to start: ${weak.join(', ')} must be a unique random value of at least 24 characters.`);
+    process.exit(1);
+  }
+  if (process.env.JWT_SECRET === process.env.JWT_REFRESH_SECRET) {
+    console.error('Refusing to start: JWT_SECRET and JWT_REFRESH_SECRET must not be the same value.');
+    process.exit(1);
+  }
+}
+
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || '0.0.0.0';
 const server = http.createServer(app);

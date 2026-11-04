@@ -16,6 +16,14 @@ import {
 const prisma = new PrismaClient();
 
 async function seedDemo() {
+  // Every account written here shares the password published in README.md, and
+  // each upsert resets it on re-run. Running this against a live PHI database
+  // hands anyone a working clinical identity, so production is refused unless
+  // explicitly overridden for a throwaway environment.
+  if (process.env.NODE_ENV === 'production' && process.env.SEED_DEMO_DATA !== 'true') {
+    throw new Error('Refusing to seed the public demo roster into a production database. Set SEED_DEMO_DATA=true only on a disposable environment.');
+  }
+
   console.log('🚀 [TeleMedSecure] Starting Full End-to-End Demo Environment Seeding...');
   const defaultPassword = 'Password123!';
   const passwordHash = await bcrypt.hash(defaultPassword, 10);

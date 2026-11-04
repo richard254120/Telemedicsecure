@@ -4,23 +4,38 @@ import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
+// This seed is executed on every boot by scripts/start.js (`prisma db seed`), so
+// it must be non-destructive. The previous revision wrote `passwordHash`,
+// `isActive`, `failedAttempts` and `lockedUntil` in every upsert's update branch,
+// which meant a single redeploy restored the published demo password, re-activated
+// accounts an administrator had suspended, and cleared lockouts.
+// SEED_FORCE_RESET=true restores the old overwrite behaviour for local recovery.
+const RESET_EXISTING = process.env.SEED_FORCE_RESET === 'true';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production';
+// README.md / DEPLOYMENT.md publish `Password123!` for the demo roster, so those
+// identities must never be created on a deployed system.
+const SEED_DEMO_USERS = !IS_PRODUCTION || process.env.SEED_DEMO_DATA === 'true';
+
 async function main() {
   const passwordHash = await argon2.hash('Password123!');
 
     // Seed Admin from env variables
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@telemed.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
+    if (IS_PRODUCTION && !process.env.ADMIN_PASSWORD) {
+      throw new Error('Refusing to bootstrap an administrator with the built-in default password. Set ADMIN_PASSWORD (and ADMIN_EMAIL) in the deployment environment.');
+    }
     const adminPasswordHash = await argon2.hash(adminPassword);
     await prisma.user.upsert({
       where: { email: adminEmail },
-      update: {
+      update: RESET_EXISTING ? {
         passwordHash: adminPasswordHash,
         isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         verificationStatus: VerificationStatus.VERIFIED,
         mustChangePassword: true
-      },
+      } : {},
       create: {
         email: adminEmail,
         passwordHash: adminPasswordHash,
@@ -34,6 +49,11 @@ async function main() {
       }
     });
 
+  if (!SEED_DEMO_USERS) {
+    console.log('Seeding completed: administrator bootstrapped, demo roster skipped (production).');
+    return;
+  }
+
   // Seed Doctors
   const doctors = [
     { email: 'doctor@telemed.com', firstName: 'Sarah', lastName: 'Mitchell', license: 'NPI-1928301948', spec: 'Cardiology' },
@@ -44,7 +64,7 @@ async function main() {
   for (const doc of doctors) {
     await prisma.user.upsert({
       where: { email: doc.email },
-      update: {
+      update: RESET_EXISTING ? {
         passwordHash,
         isActive: true,
         failedAttempts: 0,
@@ -53,7 +73,7 @@ async function main() {
         medicalLicenseNo: doc.license,
         licenseJurisdiction: 'US-NPI',
         specialty: doc.spec
-      },
+      } : {},
       create: {
         email: doc.email,
         passwordHash,
@@ -79,7 +99,7 @@ async function main() {
   for (const n of nurses) {
     await prisma.user.upsert({
       where: { email: n.email },
-      update: {
+      update: RESET_EXISTING ? {
         passwordHash,
         isActive: true,
         failedAttempts: 0,
@@ -88,7 +108,7 @@ async function main() {
         medicalLicenseNo: n.license,
         licenseJurisdiction: 'US-RN',
         specialty: n.spec
-      },
+      } : {},
       create: {
         email: n.email,
         passwordHash,
@@ -116,13 +136,13 @@ async function main() {
   for (const p of patients) {
     await prisma.user.upsert({
       where: { email: p.email },
-      update: {
+      update: RESET_EXISTING ? {
         passwordHash,
         isActive: true,
         failedAttempts: 0,
         lockedUntil: null,
         verificationStatus: VerificationStatus.VERIFIED
-      },
+      } : {},
       create: {
         email: p.email,
         passwordHash,
@@ -150,7 +170,7 @@ async function main() {
   for (const s of clinicalStaff) {
     await prisma.user.upsert({
       where: { email: s.email },
-      update: {
+      update: RESET_EXISTING ? {
         passwordHash,
         role: s.role,
         isActive: true,
@@ -160,7 +180,7 @@ async function main() {
         medicalLicenseNo: s.license,
         licenseJurisdiction: 'US-CLINICAL',
         specialty: s.spec
-      },
+      } : {},
       create: {
         email: s.email,
         passwordHash,

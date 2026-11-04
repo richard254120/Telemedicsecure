@@ -10,7 +10,13 @@ import { requireAuth } from '../middlewares/auth';
 const router = Router();
 const prisma = new PrismaClient();
 
-const generateTokens = (user: any) => {
+// A subject must be the persisted user record, not just an id: the access token
+// carries `role` and `mustChangePassword`, and callers that passed a bare id
+// silently issued unprivileged tokens (`user.role`/`user.mustChangePassword`
+// resolved to undefined on a string).
+type TokenSubject = { id: string; role: string; mustChangePassword: boolean };
+
+const generateTokens = (user: TokenSubject) => {
   const accessToken = jwt.sign({ id: user.id, role: user.role, mustChangePassword: user.mustChangePassword }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
   const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET || 'rsecret', { expiresIn: '7d' });
   return { accessToken, refreshToken };
@@ -331,13 +337,59 @@ router.post('/login', async (req, res) => {
     return invalidResponse();
   }
 
-  // Reset failed attempts on success
+  // Second factor. A stored TOTP secret means the account is enrolled, and
+  // enrolment is only worth asserting if login actually demands the code:
+  // previously the secret was written on enrolment and never read back here,
+  // so the admin console's "TOTP ACTIVE" badge and the HIPAA §164.312(d)
+  // control claim were backed by nothing.
+  if (user.totpSecret) {
+    if (!totp) {
+      await logAudit('LOGIN_2FA_REQUIRED', 'AUTH', user.id, req.ip);
+      return res.status(401).json({ error: 'Enter the 6-digit code from your authenticator app.', requires2FA: true });
+    }
+
+    let validTotp = false;
+    try {
+      validTotp = speakeasy.totp.verify({
+        secret: user.totpSecret,
+        encoding: 'base32',
+        token: String(totp).trim(),
+        window: 1
+      });
+    } catch {
+      validTotp = false;
+    }
+
+    if (!validTotp) {
+      // Wrong OTP counts toward the same lockout as a wrong password, so the
+      // second factor cannot be brute-forced independently.
+      const failedAttempts = (user.failedAttempts ?? 0) + 1;
+      const lockedUntil = failedAttempts >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
+      await prisma.user.update({ where: { id: user.id }, data: { failedAttempts, lockedUntil } });
+      await logAudit('LOGIN_2FA_FAILURE', 'AUTH', user.id, req.ip);
+      await rulesEngine.recordFailedLogin(user.email, req.ip || 'unknown', user.id);
+      return res.status(401).json({ error: 'Invalid authenticator code.', requires2FA: true });
+    }
+  }
+
+  // Only a fully authenticated attempt clears the failure counter.
   await prisma.user.update({ where: { id: user.id }, data: { failedAttempts: 0, lockedUntil: null } });
   rulesEngine.resetFailedLogins(user.email);
   await logAudit('LOGIN_SUCCESS', 'AUTH', user.id, req.ip);
 
   const tokens = generateTokens(user);
-  const payload = { ...tokens, user: { id: user.id, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword } };
+  const payload = {
+    ...tokens,
+    user: {
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      verificationStatus: user.verificationStatus,
+      mustChangePassword: user.mustChangePassword
+    }
+  };
   res.json(payload);
 });
 
@@ -454,20 +506,36 @@ router.get('/me', requireAuth, async (req, res) => {
   });
 });
 
+// Environments where the credential-less demo login is permitted. Deny when
+// NODE_ENV is unset or production: an unauthenticated request that names a role
+// must never be able to mint an admin session on a deployed system.
+const DEMO_LOGIN_ENVS = new Set(['test', 'development', 'dev']);
+const demoLoginEnabled = () =>
+  DEMO_LOGIN_ENVS.has(process.env.NODE_ENV ?? '') || process.env.DEMO_LOGIN_ENABLED === 'true';
+
 router.post('/quick-login', async (req, res) => {
+  if (!demoLoginEnabled()) {
+    await logAudit('DEMO_LOGIN_BLOCKED', 'AUTH', null, req.ip);
+    // 404 rather than 403: do not advertise the endpoint's existence.
+    return res.status(404).json({ error: 'Not found' });
+  }
+
   try {
     const { role } = req.body;
     const targetRole = Object.values(Role).includes(role) ? role : Role.DOCTOR;
+    // Enrolled accounts are excluded, so the demo shortcut cannot become a path
+    // around the TOTP second factor enforced on /login.
     let user = await prisma.user.findFirst({
-      where: { role: targetRole, isActive: true },
+      where: { role: targetRole, isActive: true, totpSecret: null },
       orderBy: { createdAt: 'asc' }
     });
 
     if (!user) {
-      return res.status(404).json({ error: `No active user found for role ${targetRole}` });
+      return res.status(404).json({ error: `No active TOTP-free user found for role ${targetRole}` });
     }
 
-    const tokens = generateTokens(user.id);
+    const tokens = generateTokens(user);
+    await logAudit('LOGIN_QUICK_DEMO', 'AUTH', user.id, req.ip);
     res.json({
       ...tokens,
       user: {
@@ -475,11 +543,13 @@ router.post('/quick-login', async (req, res) => {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: user.role
+        role: user.role,
+        verificationStatus: user.verificationStatus,
+        mustChangePassword: user.mustChangePassword
       }
     });
   } catch (error: any) {
-    res.status(500).json({ error: 'Quick login failed', details: error.message });
+    res.status(500).json({ error: 'Quick login failed' });
   }
 });
 
@@ -489,7 +559,16 @@ router.post('/refresh', async (req, res) => {
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || 'rsecret') as any;
-    const tokens = generateTokens(decoded.id);
+    // A refresh token outlives the 15-minute access token, so the account state
+    // has to be re-read: an admin deactivating a clinician (or a lockout tripped
+    // by failed attempts) must not be able to be silently refreshed around.
+    const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+    if (!user) return res.status(403).json({ error: 'Invalid refresh token' });
+    if (!user.isActive || (user.lockedUntil && user.lockedUntil > new Date())) {
+      await logAudit('TOKEN_REFRESH_REFUSED', 'AUTH', user.id, req.ip);
+      return res.status(403).json({ error: 'Account is disabled or locked' });
+    }
+    const tokens = generateTokens(user);
     res.json(tokens);
   } catch (error) {
     res.status(403).json({ error: 'Invalid refresh token' });

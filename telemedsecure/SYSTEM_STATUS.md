@@ -211,7 +211,7 @@ TeleMedSecure is a professional, HIPAA & GDPR compliant telemedicine platform wi
 ### Authentication:
 - `POST /api/v1/auth/register` - Register new user
 - `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/quick-login` - Quick demo login
+- `POST /api/v1/auth/quick-login` - Credential-less demo login; available only in test/development (or `DEMO_LOGIN_ENABLED=true`), returns 404 in production, skips accounts with a TOTP secret
 - `GET /api/v1/auth/me` - Get current user
 - `POST /api/v1/auth/refresh` - Refresh token
 - `POST /api/v1/auth/logout` - Logout

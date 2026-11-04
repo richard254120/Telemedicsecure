@@ -137,3 +137,36 @@
   background-size: 200% auto;
   animation: text-shimmer 6s ease infinite;
 }
+
+/* -------------------------------------------------------------- *
+ * Print isolation for the two documents an assessor or pharmacy
+ * keeps: the audit dossier and the signed prescription.
+ *
+ * Both called window.print() with no print stylesheet at all, so the
+ * dashboard behind the dialog — dark panels, the navigation rail, other
+ * patients' rows — was paginated into the "official" output. Under print we
+ * hide the whole document and re-reveal only the subtree marked
+ * `.print-document`, which the dialogs neutralise from their fixed,
+ * scroll-clipped container into plain page flow with Tailwind `print:` variants.
+ * -------------------------------------------------------------- */
+@media print {
+  body {
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .print-document,
+  .print-document * {
+    visibility: visible !important;
+  }
+
+  .print-document {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

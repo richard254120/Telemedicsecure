@@ -72,26 +72,45 @@ Render hosts the Node.js Express server and manages persistent WebSocket connect
    |---|---|---|
    | `DATABASE_URL` | `postgresql://user:pass@host/dbname?sslmode=require` | Connection string from Render Postgres or Neon |
    | `JWT_SECRET` | *(64-char random string or secret)* | Secret key for JWT auth signing |
+   | `JWT_REFRESH_SECRET` | *(separate 64-char random string)* | Refresh-token signing key. The server refuses to boot in production if either key is missing, shorter than 24 characters, identical to the other, or a documented placeholder |
+   | `ADMIN_EMAIL` | `you@your-org.com` | Email of the administrator account created on first boot |
+   | `ADMIN_PASSWORD` | *(strong unique password)* | Required: seeding aborts in production rather than creating an admin with the default `ChangeMe123!`. The account is flagged `mustChangePassword`, so the first login forces a rotation |
    | `PORT` | `4000` | Port for Express/Socket.IO |
    | `NODE_ENV` | `production` | Production mode |
    | `FRONTEND_URL` | `https://your-telemedsecure.vercel.app` | Your Vercel frontend URL (update after creating Vercel app) |
 6. Click **Create Web Service**.
 7. Render will automatically run `npm run build` (`prisma generate && tsc`) and start your server. Note down your backend URL: e.g., `https://telemedsecure-api.onrender.com`.
 
+   `npm start` runs `scripts/start.js`, which applies migrations, seeds, and then
+   loads the compiled server. The **Shell** commands in §4 are therefore optional
+   on a fresh service — they are shown so you can verify schema and
+   administrator state by hand. That seeding step is idempotent: it creates
+   missing rows and leaves existing credentials, lockouts and suspension flags
+   alone.
+
 ---
 
-## 4. Run Initial Database Migrations & Demo Seed on Render
+## 4. Run Initial Database Migrations & Bootstrap the Administrator on Render
 
-Once your Render database and web service are active, you can initialize tables and seed demo users:
+Once your Render database and web service are active, you can initialize tables and create the administrator account:
 
 In Render Web Service dashboard, go to the **Shell** tab:
 ```bash
 # Generate Prisma Client & push schema to the cloud DB
 npx prisma db push
 
-# Seed demo doctor, patient, nurse, admin, and cryptographic keys
-npm run seed:demo
+# Create the administrator from ADMIN_EMAIL / ADMIN_PASSWORD (idempotent:
+# existing accounts keep their credentials, lockout state and suspension flags)
+npx prisma db seed
 ```
+
+> **Do not run `npm run seed:demo` on a deployed system.** That script writes the
+> demo roster whose password is published in `README.md` (`Password123!`) and
+> resets those credentials every time it runs; it now refuses to execute when
+> `NODE_ENV=production` unless you set `SEED_DEMO_DATA=true`. After seeding, sign
+> in once as the administrator — `mustChangePassword` forces a new password —
+> then enrol a TOTP device, because `POST /auth/login` now demands the 6-digit
+> code for every account that has a secret on file.
 
 ---
 

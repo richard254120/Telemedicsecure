@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { API_BASE } from '../config';
 
 export type UserRole =
@@ -90,65 +90,64 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initAuth();
   }, []);
 
-  const login = async (email: string, password: string, totp?: string): Promise<{ success: boolean; error?: string; requires2FA?: boolean }> => {
-    try {
-      console.log('Attempting login to:', `${API_BASE}/auth/login`);
-      const res = await fetch(`${API_BASE}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-      console.log('Login response status:', res.status, res.statusText);
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        console.error('Login failed:', errorData);
-        return {
-          success: false,
-          error: errorData.error || 'Authentication failed',
-          requires2FA: !!errorData.requires2FA
-        };
-      }
-      const data = await res.json();
-      console.log('Login successful:', data);
-      setUser(data.user);
-      setToken(data.accessToken);
-      localStorage.setItem('telemed_token', data.accessToken);
-      localStorage.setItem('telemed_user', JSON.stringify(data.user));
-      return { success: true };
-    } catch (e: any) {
-      console.error('Login error:', e);
-      return { success: false, error: e?.message || 'Network error during login' };
-    }
-  };
+  const login = useCallback(
+    async (email: string, password: string, totp?: string): Promise<{ success: boolean; error?: string; requires2FA?: boolean }> => {
+      try {
+        // `totp` is only attached when supplied: the API treats a stored secret on
+        // the user row as an enrolment and rejects the attempt with `requires2FA`
+        // until the code comes back. No request or response payload is logged —
+        // this context used to `console.log` the credentials-bearing response.
+        const res = await fetch(`${API_BASE}/auth/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(totp ? { email, password, totp } : { email, password })
+        });
 
-  const logout = () => {
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          return {
+            success: false,
+            error: errorData.error || 'Authentication failed',
+            requires2FA: !!errorData.requires2FA
+          };
+        }
+
+        const data = await res.json();
+        setUser(data.user);
+        setToken(data.accessToken);
+        localStorage.setItem('telemed_token', data.accessToken);
+        localStorage.setItem('telemed_user', JSON.stringify(data.user));
+        return { success: true };
+      } catch (e) {
+        const detail = e instanceof Error && e.message ? e.message : '';
+        return { success: false, error: detail || 'Network error during login' };
+      }
+    },
+    []
+  );
+
+  const logout = useCallback(() => {
     setUser(null);
     setToken(null);
     localStorage.removeItem('telemed_token');
     localStorage.removeItem('telemed_user');
-  };
+  }, []);
 
-  const getAuthHeaders = (): Record<string, string> => {
+  // Stable while the token is stable, so memoised consumers (the admin console's
+  // data and action layers) are not torn down on every provider render.
+  const getAuthHeaders = useCallback((): Record<string, string> => {
     return {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {})
     };
-  };
+  }, [token]);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        token,
-        isLoading,
-        login,
-        logout,
-        getAuthHeaders
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo(
+    () => ({ user, token, isLoading, login, logout, getAuthHeaders }),
+    [user, token, isLoading, login, logout, getAuthHeaders]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuth = (): AuthContextType => {

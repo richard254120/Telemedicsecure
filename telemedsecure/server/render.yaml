@@ -15,6 +15,17 @@ services:
         generateValue: true
       - key: JWT_REFRESH_SECRET
         generateValue: true
+      # Administrator identity created by `prisma db seed` on first boot.
+      # Replace the email before deploying; the generated password is shown in
+      # the Render dashboard under Secrets. Seeding refuses the built-in default
+      # password when NODE_ENV=production, and the account is created with
+      # mustChangePassword=true so the first login forces a rotation.
+      - key: ADMIN_EMAIL
+        value: admin@your-org.example
+        sync: false
+      - key: ADMIN_PASSWORD
+        generateValue: true
+        sync: false
       - key: FRONTEND_URL
         value: https://telemedicsecure.vercel.app
       - key: NODE_ENV

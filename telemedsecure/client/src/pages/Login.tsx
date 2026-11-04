@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
-import { useAuth, UserRole } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config';
 import {
   ShieldCheck,
@@ -20,7 +20,6 @@ import {
   Ticket,
   UserPlus,
   ArrowRight,
-  Shield,
   Pill
 } from 'lucide-react';
 
@@ -37,11 +36,12 @@ export default function Login() {
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [totp, setTotp] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  // The API only asks for a second factor once the account has an enrolled TOTP
+  // secret, so the field stays hidden until the server reports `requires2FA`.
   const [showTotpField, setShowTotpField] = useState(false);
   const [totpCode, setTotpCode] = useState('');
 
@@ -53,7 +53,7 @@ export default function Login() {
   // Staff Invitation Token Onboarding state
   const [inviteTokenInput, setInviteTokenInput] = useState('');
   const [inviteToken, setInviteToken] = useState<string | null>(null);
-  const [inviteData, setInviteData] = useState<{ email: string; role: string; expiresAt: string; invitedBy?: any } | null>(null);
+  const [inviteData, setInviteData] = useState<{ email: string; role: string; expiresAt: string; invitedBy?: unknown } | null>(null);
   const [inviteLoading, setInviteLoading] = useState(false);
   const [inviteExpired, setInviteExpired] = useState(false);
   const [medicalLicenseNo, setMedicalLicenseNo] = useState('');
@@ -136,6 +136,8 @@ export default function Login() {
     setSuccessMessage(null);
     setValidationErrors({});
     setIsPatientRegister(false);
+    setShowTotpField(false);
+    setTotpCode('');
   };
 
   const validateForm = () => {
@@ -160,6 +162,12 @@ export default function Login() {
       if (!lastName || lastName.trim().length < 2) {
         errors.lastName = 'Last name must be at least 2 characters';
       }
+    }
+
+    // Only enforced once the server has asked for it, so first-factor-only
+    // accounts are never blocked by a client-side guess.
+    if (showTotpField && !/^\d{6}$/.test(totpCode.trim())) {
+      errors.totp = 'Enter the 6-digit code from your authenticator app';
     }
 
     setValidationErrors(errors);
@@ -208,8 +216,10 @@ export default function Login() {
       return;
     }
 
-    // Unified sign in for Doctor, Nurse, Admin, or Patient (TOTP requirement removed)
-    const res = await login(email.trim().toLowerCase(), password);
+    // Unified sign in for Doctor, Nurse, Admin, or Patient. The second factor is
+    // attached whenever it has been requested; the server decides whether an
+    // account is enrolled, the client never assumes it.
+    const res = await login(email.trim().toLowerCase(), password, showTotpField ? totpCode.trim() : undefined);
     if (res.success) {
       // Direct navigation to user's authorized role dashboard
       const storedUser = localStorage.getItem('telemed_user');
@@ -218,6 +228,13 @@ export default function Login() {
       navigate(rolePath);
     } else {
       setError(res.error || 'Invalid email or password.');
+      if (res.requires2FA) {
+        setShowTotpField(true);
+        setTotpCode('');
+      } else {
+        setShowTotpField(false);
+        setTotpCode('');
+      }
     }
     setLoading(false);
   };
@@ -264,7 +281,7 @@ export default function Login() {
         if (data.expired) setInviteExpired(true);
         setError(data.error || 'Failed to complete staff onboarding');
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Staff onboarding error:', err);
       setError('Network error during staff onboarding.');
     } finally {
@@ -834,6 +851,40 @@ export default function Login() {
                   <p className="text-[10px] text-red-400 mt-1">{validationErrors.password}</p>
                 )}
               </div>
+
+              {/* Second factor — revealed only when the API reports the enrolment */}
+              {showTotpField && (
+                <div className="animate-fadeIn">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Authenticator Code *
+                    </label>
+                    <span className="text-[10px] text-slate-500">6 digits, 30-second window</span>
+                  </div>
+                  <div className="relative">
+                    <ShieldCheck className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type="text"
+                      value={totpCode}
+                      onChange={e => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      inputMode="numeric"
+                      autoComplete="one-time-code"
+                      maxLength={6}
+                      placeholder="000000"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 font-mono tracking-[0.4em] text-center text-xs focus:outline-none ${
+                        validationErrors.totp ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                      }`}
+                    />
+                  </div>
+                  {validationErrors.totp ? (
+                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.totp}</p>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      This account has 2FA enrolled. Codes are verified server-side against your enrolment secret.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Submit Button */}
               <button

@@ -237,37 +237,50 @@ router.get('/audit/all', requireRole([Role.ADMIN, Role.DOCTOR]), async (req: Req
       orderBy: { createdAt: 'desc' }
     });
 
-    const audited = await Promise.all(
-      prescriptions.map(async (rx: any) => {
-        const auditHistory = await prisma.auditEvent.findMany({
-          where: { resource: `Prescription:${rx.id}` },
+    // One query for the whole registry instead of one per prescription.
+    // The previous loop issued `N` auditEvent.findMany calls (N = number of
+    // prescriptions), so this endpoint cost 1 + 2N round trips and degraded
+    // linearly as the ledger grew.
+    const auditEvents = prescriptions.length
+      ? await prisma.auditEvent.findMany({
+          where: { resource: { in: prescriptions.map(rx => `Prescription:${rx.id}`) } },
           orderBy: { timestamp: 'asc' },
           include: {
             user: { select: { id: true, firstName: true, lastName: true, email: true, role: true } }
           }
-        });
+        })
+      : [];
 
-        let signatureStatus: 'VALID' | 'TAMPERED' = 'TAMPERED';
-        let canonicalHash = '';
-        if (rx.signature && rx.doctor.doctorPublicKey) {
-          try {
-            const canonical = buildCanonicalPayload(rx);
-            canonicalHash = crypto.createHash('sha256').update(canonical).digest('hex');
-            const valid = verifyPrescriptionCanonical(canonical, rx.signature.signature, rx.doctor.doctorPublicKey);
-            signatureStatus = valid ? 'VALID' : 'TAMPERED';
-          } catch {
-            signatureStatus = 'TAMPERED';
-          }
+    const historyByResource = new Map<string, typeof auditEvents>();
+    for (const event of auditEvents) {
+      const bucket = historyByResource.get(event.resource);
+      if (bucket) bucket.push(event);
+      else historyByResource.set(event.resource, [event]);
+    }
+
+    const audited = prescriptions.map((rx: any) => {
+      const auditHistory = historyByResource.get(`Prescription:${rx.id}`) ?? [];
+
+      let signatureStatus: 'VALID' | 'TAMPERED' = 'TAMPERED';
+      let canonicalHash = '';
+      if (rx.signature && rx.doctor?.doctorPublicKey) {
+        try {
+          const canonical = buildCanonicalPayload(rx);
+          canonicalHash = crypto.createHash('sha256').update(canonical).digest('hex');
+          const valid = verifyPrescriptionCanonical(canonical, rx.signature.signature, rx.doctor.doctorPublicKey);
+          signatureStatus = valid ? 'VALID' : 'TAMPERED';
+        } catch {
+          signatureStatus = 'TAMPERED';
         }
+      }
 
-        return {
-          ...rx,
-          signatureStatus,
-          canonicalHash,
-          auditHistory
-        };
-      })
-    );
+      return {
+        ...rx,
+        signatureStatus,
+        canonicalHash,
+        auditHistory
+      };
+    });
 
     res.json(audited);
   } catch (err: any) {

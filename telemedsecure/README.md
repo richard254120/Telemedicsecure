@@ -169,3 +169,10 @@ npm run dev
 | **Patient** | `patient1@telemed.com` | `Password123!` | GDPR Consents Granted |
 | **Nurse** | `nurse1@telemed.com` | `Password123!` | Vitals Triage Operator |
 | **Admin** | `admin@telemed.com` | `Password123!` | Chief Compliance & Security Officer |
+
+These identities exist only in a local/demo database. `npm run seed:demo` refuses
+to run when `NODE_ENV=production`, and `prisma db seed` in production creates just
+the administrator from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. Production deployments
+must provision staff from the admin console, which issues single-use temporary
+passwords; once an account enrols a TOTP device, login requires the 6-digit code.
+See [DEPLOYMENT.md](DEPLOYMENT.md).
