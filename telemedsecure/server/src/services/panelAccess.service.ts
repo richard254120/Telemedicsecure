@@ -9,7 +9,8 @@ const prisma = new PrismaClient();
  * ∪ patients with a consultation assigned to them
  * ∪ patients who granted them a redeemed, still-active AccessGrant.
  *
- * A nurse's accessible patients = care-team memberships (role NURSE, ACTIVE) only.
+ * A nurse's accessible patients = care-team memberships (role NURSE, ACTIVE)
+ * ∪ patients who granted them a redeemed, still-active AccessGrant.
  *
  * Any other role (ADMIN, RECEPTIONIST, station roles, ...) returns `null`,
  * meaning "unrestricted" — their existing directory visibility is preserved so
@@ -19,11 +20,27 @@ export async function getAccessiblePatientIds(user: any): Promise<string[] | nul
   if (!user) return null;
 
   if (user.role === Role.NURSE) {
-    const memberships = await prisma.careTeamMembership.findMany({
-      where: { clinicianId: user.id, role: 'NURSE', status: CareTeamStatus.ACTIVE },
-      select: { patientId: true },
-    });
-    return Array.from(new Set(memberships.map((m) => m.patientId)));
+    const [memberships, grants] = await Promise.all([
+      prisma.careTeamMembership.findMany({
+        where: { clinicianId: user.id, role: 'NURSE', status: CareTeamStatus.ACTIVE },
+        select: { patientId: true },
+      }),
+      prisma.accessGrant.findMany({
+        where: {
+          granteeId: user.id,
+          status: AccessGrantStatus.ACTIVE,
+          redeemedAt: { not: null },
+          revokedAt: null,
+          expiresAt: { gt: new Date() },
+        },
+        select: { patientId: true },
+      }),
+    ]);
+    const ids = [
+      ...memberships.map((m) => m.patientId),
+      ...grants.map((g) => g.patientId),
+    ];
+    return Array.from(new Set(ids));
   }
 
   if (user.role === Role.DOCTOR) {
@@ -38,7 +55,7 @@ export async function getAccessiblePatientIds(user: any): Promise<string[] | nul
       }),
       prisma.accessGrant.findMany({
         where: {
-          doctorId: user.id,
+          granteeId: user.id,
           status: AccessGrantStatus.ACTIVE,
           redeemedAt: { not: null },
           revokedAt: null,
@@ -71,13 +88,14 @@ export async function canViewPatient(user: any, patientId: string): Promise<bool
 }
 
 /**
- * Returns an active, redeemed, un-expired AccessGrant binding this doctor to
- * this patient, or null. Used to widen a doctor's read access temporarily.
+ * Returns an active, redeemed, un-expired AccessGrant binding this staff member
+ * (grantee) to this patient, or null. Used to widen a clinician's read access
+ * temporarily. Role-agnostic: works for doctors, nurses, and any other staff.
  */
-export async function getActiveGrantForDoctor(doctorId: string, patientId: string) {
+export async function getActiveGrant(granteeId: string, patientId: string) {
   return prisma.accessGrant.findFirst({
     where: {
-      doctorId,
+      granteeId,
       patientId,
       status: AccessGrantStatus.ACTIVE,
       redeemedAt: { not: null },
@@ -116,7 +134,7 @@ export async function logPatientAccess(params: {
     if (params.resourceType === 'MEDICAL_RECORD' || params.action === 'READ_MEDICAL_RECORD') {
       const grant = await prisma.accessGrant.findFirst({
         where: {
-          doctorId: params.viewerId,
+          granteeId: params.viewerId,
           patientId: params.patientId,
           status: AccessGrantStatus.ACTIVE,
         },

@@ -97,5 +97,8 @@ export const put = <T>(h: HeadersFactory, path: string, body: unknown, msg: stri
 export const post = <T>(h: HeadersFactory, path: string, body: unknown, msg: string) =>
   request<T>(h, path, { method: 'POST', body: JSON.stringify(body) }, msg);
 
+export const patch = <T>(h: HeadersFactory, path: string, body: unknown, msg: string) =>
+  request<T>(h, path, { method: 'PATCH', body: JSON.stringify(body) }, msg);
+
 export const del = <T>(h: HeadersFactory, path: string, msg: string) =>
   request<T>(h, path, { method: 'DELETE' }, msg);

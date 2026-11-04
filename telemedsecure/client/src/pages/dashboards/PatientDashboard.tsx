@@ -32,7 +32,8 @@ import {
   Eye,
   ClipboardCheck,
   Users,
-  ShieldAlert
+  ShieldAlert,
+  Ban
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -40,8 +41,10 @@ import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import Shell from '../../dashboard-shell/Shell';
 import { VERIFICATION_GROUP, accentForRole, brandSubtitleForRole } from '../../dashboard-shell/navConfig';
 import { Button, ErrorState, Panel, Badge, SecretField, Field, EmptyState, INPUT_CLASS } from '../../dashboard-shell/ui';
-import { get as apiGet, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
+import { get as apiGet, post as apiPost, patch as apiPatch, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
+import { handoffBadge } from '../../dashboard-shell/handoff';
+import NotificationBell from '../../dashboard-shell/NotificationBell';
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
@@ -64,11 +67,17 @@ export default function PatientDashboard() {
   const [grants, setGrants] = useState<any[]>([]);
   const [accessLog, setAccessLog] = useState<any[]>([]);
   const [accessBusy, setAccessBusy] = useState(false);
-  const [issueDoctorId, setIssueDoctorId] = useState('');
+  const [issueGranteeId, setIssueGranteeId] = useState('');
+  const [grantees, setGrantees] = useState<any[]>([]);
   const [issueTtl, setIssueTtl] = useState<'1h' | '24h' | '72h' | '7d'>('24h');
   const [issuePurpose, setIssuePurpose] = useState('');
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const [teamClinicianId, setTeamClinicianId] = useState('');
+
+  // Booking self-cancel state
+  const [cancelTarget, setCancelTarget] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+  const [cancelBusy, setCancelBusy] = useState(false);
 
   // New Modals State
   const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
@@ -128,22 +137,24 @@ export default function PatientDashboard() {
   const fetchCareAccess = async () => {
     if (!user?.id) return;
     try {
-      const [teamRes, grantsRes, logRes] = await Promise.all([
+      const [teamRes, grantsRes, logRes, granteesRes] = await Promise.all([
         apiGet<{ members: any[] }>(getAuthHeaders, `/care-team/team/${user.id}`, 'Failed to load care team'),
         apiGet<any[]>(getAuthHeaders, '/access/grants', 'Failed to load access grants'),
-        apiGet<any[]>(getAuthHeaders, '/access/log', 'Failed to load access log')
+        apiGet<any[]>(getAuthHeaders, '/access/log', 'Failed to load access log'),
+        apiGet<any[]>(getAuthHeaders, '/access/grantees', 'Failed to load staff directory')
       ]);
       setCareTeam(Array.isArray(teamRes?.members) ? teamRes.members : []);
       setGrants(Array.isArray(grantsRes) ? grantsRes : []);
       setAccessLog(Array.isArray(logRes) ? logRes : []);
+      setGrantees(Array.isArray(granteesRes) ? granteesRes : []);
     } catch (e) {
       console.error('Failed to load care & access data', e);
     }
   };
 
   const handleIssueGrant = async () => {
-    if (!issueDoctorId) {
-      setActionMessage('Select a physician to share your record with.');
+    if (!issueGranteeId) {
+      setActionMessage('Select a staff member to share your record with.');
       return;
     }
     setAccessBusy(true);
@@ -151,7 +162,7 @@ export default function PatientDashboard() {
       const data = await apiPost<{ code: string }>(
         getAuthHeaders,
         '/access/grants',
-        { doctorId: issueDoctorId, ttl: issueTtl, purpose: issuePurpose || undefined },
+        { granteeId: issueGranteeId, ttl: issueTtl, purpose: issuePurpose || undefined },
         'Failed to issue access key'
       );
       setIssuedCode(data.code);
@@ -218,6 +229,24 @@ export default function PatientDashboard() {
       setActionMessage(errorMessage(e, 'Failed to remove care team member'));
     } finally {
       setAccessBusy(false);
+    }
+  };
+
+  // Cancel one of the patient's own bookings (PENDING / CONFIRMED / SCHEDULED).
+  const openCancelModal = (app: any) => { setCancelTarget(app); setCancelReason(''); };
+  const handleCancelAppointment = async () => {
+    if (!cancelTarget) return;
+    setCancelBusy(true);
+    try {
+      await apiPatch(getAuthHeaders, `/consultations/${cancelTarget.id}/cancel`, { reason: cancelReason || undefined }, 'Failed to cancel booking');
+      setCancelTarget(null);
+      setCancelReason('');
+      setActionMessage('Your appointment has been cancelled and the clinic was notified.');
+      fetchPatientData();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to cancel booking'));
+    } finally {
+      setCancelBusy(false);
     }
   };
 
@@ -408,6 +437,7 @@ export default function PatientDashboard() {
   };
   const headerActions = (
     <>
+      <NotificationBell getAuthHeaders={getAuthHeaders} userId={user?.id} />
       <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
       <Button variant="secondary" icon={Video} onClick={joinActiveCall}>Join Call</Button>
       <Button variant="success" icon={PlusCircle} onClick={() => setShowBookModal(true)}>Book Consultation</Button>
@@ -476,15 +506,23 @@ export default function PatientDashboard() {
               </div>
             ) : (
               <div className="grid gap-4">
-                {appointments.map(app => (
+                {appointments.map(app => {
+                  const badge = handoffBadge(app.status);
+                  const cancellable = ['PENDING', 'CONFIRMED', 'SCHEDULED'].includes(app.status);
+                  const toneClass =
+                    badge.tone === 'success' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                    : badge.tone === 'danger' ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                    : badge.tone === 'warning' ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                    : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+                  return (
                   <div
                     key={app.id}
                     className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 hover:border-cyan-500/50 transition shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          {app.status || 'SCHEDULED'}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${toneClass}`}>
+                          {badge.label}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">
                           ID: {app.id.substring(0, 8)}...
@@ -497,19 +535,40 @@ export default function PatientDashboard() {
                         <Clock className="w-3.5 h-3.5" />
                         <span>{new Date(app.scheduledAt).toLocaleString()}</span>
                       </p>
+                      {app.status === 'DECLINED' && app.declineReason && (
+                        <p className="text-[11px] text-rose-300">Declined: {app.declineReason}</p>
+                      )}
+                      {app.status === 'CANCELLED' && app.cancelReason && (
+                        <p className="text-[11px] text-slate-400">Cancelled: {app.cancelReason}</p>
+                      )}
+                      {app.status === 'PENDING' && (
+                        <p className="text-[11px] text-amber-300">Awaiting clinician confirmation.</p>
+                      )}
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => navigate(`/waiting-room/${app.id}`)}
-                        className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/30 flex items-center space-x-1.5"
-                      >
-                        <Video className="w-4 h-4" />
-                        <span>Join Call</span>
-                      </button>
+                      {cancellable && (
+                        <button
+                          onClick={() => openCancelModal(app)}
+                          className="px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                        >
+                          <Ban className="w-4 h-4" />
+                          <span>Cancel</span>
+                        </button>
+                      )}
+                      {(app.status === 'CONFIRMED' || app.status === 'SCHEDULED' || app.status === 'IN_PROGRESS') && (
+                        <button
+                          onClick={() => navigate(`/waiting-room/${app.id}`)}
+                          className="px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs transition shadow-lg shadow-blue-600/30 flex items-center space-x-1.5"
+                        >
+                          <Video className="w-4 h-4" />
+                          <span>Join Call</span>
+                        </button>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -992,14 +1051,14 @@ export default function PatientDashboard() {
             </Panel>
 
             {/* Issue access key */}
-            <Panel title="Share My Record (Temporary Access Key)" icon={KeyRound} description="Grant one physician time-boxed read access. The code is bound to that doctor and shown only once.">
+            <Panel title="Share My Record (Temporary Access Key)" icon={KeyRound} description="Grant one staff member time-boxed read access. The code is bound to that person and shown only once.">
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Physician" required>
-                    <select value={issueDoctorId} onChange={(e) => setIssueDoctorId(e.target.value)} className={INPUT_CLASS}>
-                      <option value="">Select a doctor…</option>
-                      {doctorsList.map((d) => (
-                        <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}{d.specialty ? ` — ${d.specialty}` : ''}</option>
+                  <Field label="Staff member" required>
+                    <select value={issueGranteeId} onChange={(e) => setIssueGranteeId(e.target.value)} className={INPUT_CLASS}>
+                      <option value="">Select a staff member…</option>
+                      {grantees.map((g) => (
+                        <option key={g.id} value={g.id}>{g.role === 'DOCTOR' ? 'Dr. ' : ''}{g.firstName} {g.lastName}{g.specialty ? ` — ${g.specialty}` : ` — ${String(g.role).replace(/_/g, ' ').toLowerCase()}`}</option>
                       ))}
                     </select>
                   </Field>
@@ -1016,7 +1075,7 @@ export default function PatientDashboard() {
                   <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} placeholder="e.g. Second opinion on my lab results" className={INPUT_CLASS} />
                 </Field>
                 <div className="flex justify-end">
-                  <Button variant="primary" icon={KeyRound} onClick={handleIssueGrant} busy={accessBusy} disabled={!issueDoctorId}>Issue Access Key</Button>
+                  <Button variant="primary" icon={KeyRound} onClick={handleIssueGrant} busy={accessBusy} disabled={!issueGranteeId}>Issue Access Key</Button>
                 </div>
                 {issuedCode && (
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
@@ -1047,7 +1106,10 @@ export default function PatientDashboard() {
                     return (
                       <div key={g.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-semibold text-white truncate">Dr. {g.doctor?.firstName} {g.doctor?.lastName}</p>
+                          <p className="text-sm font-semibold text-white truncate">
+                            {g.granteeRole === 'DOCTOR' ? 'Dr. ' : ''}{g.grantee?.firstName} {g.grantee?.lastName}
+                            <span className="ml-2 text-[10px] text-slate-500 font-mono">{g.granteeRole}</span>
+                          </p>
                           <p className="text-[11px] text-slate-400">
                             {g.purpose ? `${g.purpose} · ` : ''}Expires {new Date(g.expiresAt).toLocaleString()}
                             {g.lastAccessAt ? ` · last viewed ${new Date(g.lastAccessAt).toLocaleString()}` : ''}
@@ -1258,6 +1320,40 @@ export default function PatientDashboard() {
         recipientName={`Attending Care Team (${attendingDoctorName} & Clinical Staff)`}
         recipientRole="CARE_TEAM"
       />
+
+      {/* Cancel Appointment Modal */}
+      {cancelTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                <Ban className="w-5 h-5 text-rose-400" />
+                <span>Cancel this consultation</span>
+              </h3>
+              <button onClick={() => setCancelTarget(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-slate-300">
+              {cancelTarget.doctor ? `Dr. ${cancelTarget.doctor.firstName} ${cancelTarget.doctor.lastName}` : 'Your clinician'} will be notified that you cancelled the appointment for{' '}
+              <span className="font-semibold text-white">{new Date(cancelTarget.scheduledAt).toLocaleString()}</span>.
+            </p>
+            <Field label="Reason (optional)">
+              <textarea
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={3}
+                placeholder="Let your care team know why"
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => setCancelTarget(null)}>Keep appointment</Button>
+              <Button variant="danger" icon={Ban} onClick={handleCancelAppointment} busy={cancelBusy}>Cancel appointment</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Patient Appointment Booking & Clinical Intake Modal */}
       {showBookModal && (

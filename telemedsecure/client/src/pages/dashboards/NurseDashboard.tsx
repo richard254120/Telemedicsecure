@@ -21,15 +21,20 @@ import {
   Zap,
   Send,
   AlertCircle,
-  MessageSquare
+  MessageSquare,
+  XCircle,
+  CalendarClock,
+  X
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import Shell from '../../dashboard-shell/Shell';
 import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
-import { Button, ErrorState } from '../../dashboard-shell/ui';
-import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import { Button, ErrorState, Field, INPUT_CLASS } from '../../dashboard-shell/ui';
+import { handoffBadge } from '../../dashboard-shell/handoff';
+import { get as apiGet, patch as apiPatch, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavTab } from '../../dashboard-shell/types';
+import NotificationBell from '../../dashboard-shell/NotificationBell';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
@@ -59,6 +64,12 @@ export default function NurseDashboard() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [recentEntries, setRecentEntries] = useState<any[]>([]);
 
+  // Booking lifecycle action modal + inline feedback for the roster tab
+  const [bookingAction, setBookingAction] = useState<{ mode: 'decline' | 'reschedule' | 'cancel'; c: any } | null>(null);
+  const [bookingActionBusy, setBookingActionBusy] = useState(false);
+  const [bookingActionInput, setBookingActionInput] = useState('');
+  const [rosterMsg, setRosterMsg] = useState<{ tone: 'ok' | 'err'; text: string } | null>(null);
+
   useEffect(() => {
     fetchNurseData();
   }, [user]);
@@ -75,6 +86,49 @@ export default function NurseDashboard() {
     } finally {
       setLastSyncedAt(Date.now());
       setLoading(false);
+    }
+  };
+
+  // --- Booking lifecycle (decline / reschedule / cancel) for care-team patients ---
+  const flashRoster = (tone: 'ok' | 'err', text: string) => { setRosterMsg({ tone, text }); setTimeout(() => setRosterMsg(null), 5000); };
+
+  const handleAcceptBooking = async (c: any) => {
+    try {
+      await apiPatch(getAuthHeaders, `/consultations/${c.id}/accept`, {}, 'Failed to accept booking');
+      flashRoster('ok', 'Consultation accepted — the patient has been notified.');
+      fetchNurseData();
+    } catch (e) {
+      flashRoster('err', errorMessage(e, 'Failed to accept booking'));
+    }
+  };
+
+  const openBookingAction = (mode: 'decline' | 'reschedule' | 'cancel', c: any) => {
+    setBookingAction({ mode, c });
+    setBookingActionInput(mode === 'reschedule' ? new Date(new Date(c.scheduledAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16) : '');
+  };
+
+  const submitBookingAction = async () => {
+    if (!bookingAction) return;
+    const { mode, c } = bookingAction;
+    setBookingActionBusy(true);
+    try {
+      if (mode === 'decline') {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/decline`, { reason: bookingActionInput || undefined }, 'Failed to decline booking');
+        flashRoster('ok', 'Request declined — the patient has been notified.');
+      } else if (mode === 'cancel') {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/cancel`, { reason: bookingActionInput || undefined }, 'Failed to cancel booking');
+        flashRoster('ok', 'Consultation cancelled — the patient has been notified.');
+      } else {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/reschedule`, { newScheduledAt: new Date(bookingActionInput).toISOString() }, 'Failed to reschedule booking');
+        flashRoster('ok', 'Consultation rescheduled — the patient has been notified of the new time.');
+      }
+      setBookingAction(null);
+      setBookingActionInput('');
+      fetchNurseData();
+    } catch (e) {
+      flashRoster('err', errorMessage(e, 'Booking action failed'));
+    } finally {
+      setBookingActionBusy(false);
     }
   };
 
@@ -231,6 +285,7 @@ export default function NurseDashboard() {
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const headerActions = (
     <>
+      <NotificationBell getAuthHeaders={getAuthHeaders} userId={user?.id} />
       <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button>
       <Button variant="success" icon={PlusCircle} onClick={() => setActiveTab('vitals')}>Capture Vitals</Button>
     </>
@@ -522,6 +577,12 @@ export default function NurseDashboard() {
               <span>Assigned Patient Roster</span>
             </h2>
 
+            {rosterMsg && (
+              <div className={`p-3 rounded-xl text-xs font-semibold border ${rosterMsg.tone === 'ok' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}>
+                {rosterMsg.text}
+              </div>
+            )}
+
             <div className="grid gap-4">
               {consultations.length === 0 ? (
                 <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-3">
@@ -529,24 +590,73 @@ export default function NurseDashboard() {
                   <p className="text-sm text-slate-400">No assigned patients found.</p>
                 </div>
               ) : (
-                consultations.map(c => (
+                consultations.map(c => {
+                  const badge = handoffBadge(c.status);
+                  const toneClass =
+                    badge.tone === 'success' ? 'bg-emerald-500/15 text-emerald-300'
+                    : badge.tone === 'danger' ? 'bg-rose-500/15 text-rose-300'
+                    : badge.tone === 'warning' ? 'bg-amber-500/15 text-amber-300'
+                    : 'bg-slate-700 text-slate-300';
+                  const isPending = c.status === 'PENDING';
+                  const isActive = ['PENDING', 'CONFIRMED', 'SCHEDULED'].includes(c.status);
+                  return (
                   <div
                     key={c.id}
                     className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
                   >
                     <div className="space-y-1">
-                      <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
-                        ID: {c.id.substring(0, 8)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${toneClass}`}>
+                          {badge.label}
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
+                          ID: {c.id.substring(0, 8)}
+                        </span>
+                      </div>
                       <h3 className="text-base font-bold text-white">
                         {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId}
                       </h3>
                       <p className="text-xs text-slate-400">
-                        Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'}
+                        Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'} · {new Date(c.scheduledAt).toLocaleString()}
                       </p>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {isPending && (
+                        <>
+                          <button
+                            onClick={() => handleAcceptBooking(c)}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => openBookingAction('decline', c)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
+                      {isActive && (
+                        <button
+                          onClick={() => openBookingAction('reschedule', c)}
+                          className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-xs transition flex items-center space-x-1.5"
+                        >
+                          <CalendarClock className="w-4 h-4" />
+                          <span>Reschedule</span>
+                        </button>
+                      )}
+                      {isActive && !isPending && (
+                        <button
+                          onClick={() => openBookingAction('cancel', c)}
+                          className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition"
+                        >
+                          Cancel
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           setSelectedConsultationId(c.id);
@@ -559,12 +669,61 @@ export default function NurseDashboard() {
                       </button>
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
         )}
       </Shell>
+
+      {/* Booking lifecycle action modal (decline / reschedule / cancel) */}
+      {bookingAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                {bookingAction.mode === 'reschedule' ? <CalendarClock className="w-5 h-5 text-cyan-400" />
+                  : bookingAction.mode === 'decline' ? <XCircle className="w-5 h-5 text-rose-400" />
+                  : <AlertTriangle className="w-5 h-5 text-amber-400" />}
+                <span>{bookingAction.mode === 'reschedule' ? 'Reschedule consultation'
+                  : bookingAction.mode === 'decline' ? 'Decline request'
+                  : 'Cancel consultation'}</span>
+              </h3>
+              <button onClick={() => setBookingAction(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Patient: <span className="font-semibold text-white">{bookingAction.c.patient ? `${bookingAction.c.patient.firstName} ${bookingAction.c.patient.lastName}` : 'Unassigned'}</span>
+              {' · '}{new Date(bookingAction.c.scheduledAt).toLocaleString()}
+            </p>
+
+            {bookingAction.mode === 'reschedule' ? (
+              <Field label="New date & time" required>
+                <input type="datetime-local" value={bookingActionInput} onChange={(e) => setBookingActionInput(e.target.value)} className={INPUT_CLASS} />
+              </Field>
+            ) : (
+              <Field label="Reason (optional)">
+                <textarea rows={3} value={bookingActionInput} onChange={(e) => setBookingActionInput(e.target.value)} placeholder="Tell the patient why" className={INPUT_CLASS} />
+              </Field>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => setBookingAction(null)}>Back</Button>
+              <Button
+                variant={bookingAction.mode === 'reschedule' ? 'primary' : 'danger'}
+                busy={bookingActionBusy}
+                disabled={bookingAction.mode === 'reschedule' && !bookingActionInput}
+                onClick={submitBookingAction}
+              >
+                {bookingAction.mode === 'reschedule' ? 'Confirm new time' : bookingAction.mode === 'decline' ? 'Decline request' : 'Cancel booking'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Two-Factor Authentication Modal */}
       <TwoFactorSetupModal

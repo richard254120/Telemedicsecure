@@ -29,10 +29,25 @@ enum VerificationStatus {
 }
 
 enum ConsultationStatus {
+  PENDING
+  CONFIRMED
+  DECLINED
   SCHEDULED
   IN_PROGRESS
   COMPLETED
   CANCELLED
+}
+
+enum NotificationType {
+  BOOKING_CREATED
+  BOOKING_ACCEPTED
+  BOOKING_DECLINED
+  BOOKING_RESCHEDULED
+  BOOKING_CANCELLED
+  ACCESS_GRANTED
+  ACCESS_REVOKED
+  CHAT_MESSAGE
+  GENERIC
 }
 
 enum Severity {
@@ -110,7 +125,8 @@ model User {
   careTeamMemberships  CareTeamMembership[]   @relation("PatientCareTeam")
   careTeamClinician    CareTeamMembership[]   @relation("ClinicianCareTeam")
   accessGrantsIssued   AccessGrant[]          @relation("PatientAccessGrants")
-  accessGrantsDoctor   AccessGrant[]          @relation("DoctorAccessGrants")
+  accessGrantsGrantee  AccessGrant[]          @relation("GranteeAccessGrants")
+  notifications        Notification[]
   patientAccessEvents  PatientAccessEvent[]   @relation("PatientAccessLog")
   viewerAccessEvents   PatientAccessEvent[]   @relation("ViewerAccessLog")
 }
@@ -136,6 +152,16 @@ model Consultation {
   startedAt   DateTime?
   endedAt     DateTime?
 
+  // Booking lifecycle: accept / decline / reschedule / cancel
+  confirmedAt     DateTime?
+  declineReason   String?
+  rescheduledFrom DateTime?
+  rescheduledById String?
+  rescheduledAt   DateTime?
+  cancelReason    String?
+  cancelledById   String?
+  cancelledAt     DateTime?
+
   // Encrypted notes
   encryptedNotes String?
   notesIv        String?
@@ -158,6 +184,7 @@ model Consultation {
   labOrders     LabOrder[]
   radiologyStudies RadiologyStudy[]
   triageAssessments TriageAssessment[]
+  notifications Notification[]
 }
 
 model MedicalRecord {
@@ -705,7 +732,8 @@ enum AccessGrantStatus {
 model AccessGrant {
   id          String            @id @default(uuid())
   patientId   String
-  doctorId    String
+  granteeId   String
+  granteeRole String?
   tokenHash   String            @unique
   scope       String            @default("RECORDS_READ")
   purpose     String?
@@ -718,9 +746,9 @@ model AccessGrant {
   updatedAt   DateTime          @updatedAt
 
   patient User @relation("PatientAccessGrants", fields: [patientId], references: [id])
-  doctor  User @relation("DoctorAccessGrants", fields: [doctorId], references: [id])
+  grantee User @relation("GranteeAccessGrants", fields: [granteeId], references: [id])
 
-  @@index([doctorId, status])
+  @@index([granteeId, status])
   @@index([patientId, status])
 }
 
@@ -751,6 +779,25 @@ model PatientAccessEvent {
   viewer  User @relation("ViewerAccessLog", fields: [viewerId], references: [id])
 
   @@index([patientId, createdAt])
+}
+
+model Notification {
+  id             String           @id @default(uuid())
+  userId         String
+  type           NotificationType
+  title          String
+  body           String
+  link           String?
+  consultationId String?
+  read           Boolean          @default(false)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  consultation Consultation? @relation(fields: [consultationId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read, createdAt])
+  @@index([userId, createdAt])
 }
 
 

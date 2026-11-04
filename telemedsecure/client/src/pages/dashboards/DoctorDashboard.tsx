@@ -42,7 +42,9 @@ import {
   Scan,
   ClipboardCheck,
   FileCheck,
-  Users
+  Users,
+  XCircle,
+  CalendarClock
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -51,9 +53,10 @@ import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import Shell from '../../dashboard-shell/Shell';
 import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
 import { Button, Panel, Badge, Field, EmptyState, INPUT_CLASS } from '../../dashboard-shell/ui';
-import { handoffTone } from '../../dashboard-shell/handoff';
-import { get as apiGet, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
+import { handoffTone, handoffBadge } from '../../dashboard-shell/handoff';
+import { get as apiGet, post as apiPost, patch as apiPatch, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
+import NotificationBell from '../../dashboard-shell/NotificationBell';
 
 export interface PatientSummary {
   id: string;
@@ -201,6 +204,11 @@ export default function DoctorDashboard() {
   const [redeemBusy, setRedeemBusy] = useState(false);
   const [careTeam, setCareTeam] = useState<any[]>([]);
 
+  // Booking lifecycle action modal (decline reason / reschedule datetime / cancel reason)
+  const [bookingAction, setBookingAction] = useState<{ mode: 'decline' | 'reschedule' | 'cancel'; c: any } | null>(null);
+  const [bookingActionBusy, setBookingActionBusy] = useState(false);
+  const [bookingActionInput, setBookingActionInput] = useState('');
+
   // Real-Time Patient Chat Notifications State
   const [notifications, setNotifications] = useState<any[]>([]);
   const [showNotificationsDropdown, setShowNotificationsDropdown] = useState<boolean>(false);
@@ -323,6 +331,49 @@ export default function DoctorDashboard() {
       setUnreadPatientsMap({});
     } catch (e) {
       console.warn(e);
+    }
+  };
+
+  // --- Booking lifecycle (accept / decline / reschedule / cancel) ---------
+  const flashSuccess = (msg: string) => { setActionError(null); setActionSuccess(msg); setTimeout(() => setActionSuccess(null), 5000); };
+
+  const handleAcceptBooking = async (c: any) => {
+    try {
+      await apiPatch(getAuthHeaders, `/consultations/${c.id}/accept`, {}, 'Failed to accept booking');
+      flashSuccess('Consultation accepted — the patient has been notified.');
+      fetchDoctorData();
+    } catch (e) {
+      setActionError(errorMessage(e, 'Failed to accept booking'));
+    }
+  };
+
+  const openBookingAction = (mode: 'decline' | 'reschedule' | 'cancel', c: any) => {
+    setBookingAction({ mode, c });
+    setBookingActionInput(mode === 'reschedule' ? new Date(new Date(c.scheduledAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16) : '');
+  };
+
+  const submitBookingAction = async () => {
+    if (!bookingAction) return;
+    const { mode, c } = bookingAction;
+    setBookingActionBusy(true);
+    try {
+      if (mode === 'decline') {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/decline`, { reason: bookingActionInput || undefined }, 'Failed to decline booking');
+        flashSuccess('Request declined — the patient has been notified.');
+      } else if (mode === 'cancel') {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/cancel`, { reason: bookingActionInput || undefined }, 'Failed to cancel booking');
+        flashSuccess('Consultation cancelled — the patient has been notified.');
+      } else {
+        await apiPatch(getAuthHeaders, `/consultations/${c.id}/reschedule`, { newScheduledAt: new Date(bookingActionInput).toISOString() }, 'Failed to reschedule booking');
+        flashSuccess('Consultation rescheduled — the patient has been notified of the new time.');
+      }
+      setBookingAction(null);
+      setBookingActionInput('');
+      fetchDoctorData();
+    } catch (e) {
+      setActionError(errorMessage(e, 'Booking action failed'));
+    } finally {
+      setBookingActionBusy(false);
     }
   };
 
@@ -727,6 +778,8 @@ export default function DoctorDashboard() {
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const headerActions = (
     <>
+      {/* Booking & access lifecycle notifications (durable, cross-session) */}
+      <NotificationBell getAuthHeaders={getAuthHeaders} userId={user?.id} />
       {/* Real-Time Clinical Notifications Bell */}
       <div className="relative">
         <button
@@ -1204,15 +1257,25 @@ export default function DoctorDashboard() {
                   <p className="text-sm">No scheduled consultations found on record.</p>
                 </div>
               ) : (
-                consultations.map(c => (
+                consultations.map(c => {
+                  const badge = handoffBadge(c.status);
+                  const toneClass =
+                    badge.tone === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
+                    : badge.tone === 'danger' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30'
+                    : badge.tone === 'warning' ? 'bg-amber-500/10 text-amber-300 border-amber-500/30'
+                    : 'bg-blue-500/10 text-blue-400 border-blue-500/30';
+                  const isPending = c.status === 'PENDING';
+                  const isActive = ['PENDING', 'CONFIRMED', 'SCHEDULED'].includes(c.status);
+                  const joinable = ['CONFIRMED', 'SCHEDULED', 'IN_PROGRESS'].includes(c.status);
+                  return (
                   <div
                     key={c.id}
                     className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 hover:border-slate-700 transition flex flex-col md:flex-row md:items-center justify-between gap-4"
                   >
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-blue-500/10 text-blue-400 border border-blue-500/30">
-                          {c.status || 'SCHEDULED'}
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold border ${toneClass}`}>
+                          {badge.label}
                         </span>
                         <span className="text-xs text-slate-400 font-mono">
                           {new Date(c.scheduledAt).toLocaleString()}
@@ -1222,25 +1285,66 @@ export default function DoctorDashboard() {
                         Patient: {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : (c.patientId || 'Unassigned')}
                       </h4>
                       <p className="text-xs text-slate-400">Email: {c.patient?.email || 'N/A'}</p>
+                      {isPending && <p className="text-[11px] text-amber-300">Awaiting your decision.</p>}
                     </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => navigate(`/call/${c.id}`)}
-                        className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-md shadow-blue-600/20"
-                      >
-                        <Video className="w-4 h-4" />
-                        <span>Launch E2EE Call</span>
-                      </button>
-                      <button
-                        onClick={() => navigate(`/waiting-room/${c.id}`)}
-                        className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
-                      >
-                        Waiting Room
-                      </button>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {isPending && (
+                        <>
+                          <button
+                            onClick={() => handleAcceptBooking(c)}
+                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition flex items-center space-x-1.5"
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Accept</span>
+                          </button>
+                          <button
+                            onClick={() => openBookingAction('decline', c)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                          >
+                            <XCircle className="w-4 h-4" />
+                            <span>Decline</span>
+                          </button>
+                        </>
+                      )}
+                      {isActive && (
+                        <button
+                          onClick={() => openBookingAction('reschedule', c)}
+                          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition flex items-center space-x-1.5"
+                        >
+                          <CalendarClock className="w-4 h-4" />
+                          <span>Reschedule</span>
+                        </button>
+                      )}
+                      {isActive && !isPending && (
+                        <button
+                          onClick={() => openBookingAction('cancel', c)}
+                          className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition"
+                        >
+                          Cancel
+                        </button>
+                      )}
+                      {joinable && (
+                        <>
+                          <button
+                            onClick={() => navigate(`/call/${c.id}`)}
+                            className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition flex items-center space-x-1.5 shadow-md shadow-blue-600/20"
+                          >
+                            <Video className="w-4 h-4" />
+                            <span>Launch E2EE Call</span>
+                          </button>
+                          <button
+                            onClick={() => navigate(`/waiting-room/${c.id}`)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
+                          >
+                            Waiting Room
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -1651,6 +1755,54 @@ export default function DoctorDashboard() {
         )}
 
       </Shell>
+
+      {/* Booking lifecycle action modal (decline / reschedule / cancel) */}
+      {bookingAction && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center space-x-2">
+                {bookingAction.mode === 'reschedule' ? <CalendarClock className="w-5 h-5 text-cyan-400" />
+                  : bookingAction.mode === 'decline' ? <XCircle className="w-5 h-5 text-rose-400" />
+                  : <AlertTriangle className="w-5 h-5 text-amber-400" />}
+                <span>{bookingAction.mode === 'reschedule' ? 'Reschedule consultation'
+                  : bookingAction.mode === 'decline' ? 'Decline request'
+                  : 'Cancel consultation'}</span>
+              </h3>
+              <button onClick={() => setBookingAction(null)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-sm text-slate-300">
+              Patient: <span className="font-semibold text-white">{bookingAction.c.patient ? `${bookingAction.c.patient.firstName} ${bookingAction.c.patient.lastName}` : 'Unassigned'}</span>
+              {' · '}{new Date(bookingAction.c.scheduledAt).toLocaleString()}
+            </p>
+
+            {bookingAction.mode === 'reschedule' ? (
+              <Field label="New date & time" required>
+                <input type="datetime-local" value={bookingActionInput} onChange={(e) => setBookingActionInput(e.target.value)} className={INPUT_CLASS} />
+              </Field>
+            ) : (
+              <Field label="Reason (optional)">
+                <textarea rows={3} value={bookingActionInput} onChange={(e) => setBookingActionInput(e.target.value)} placeholder="Tell the patient why" className={INPUT_CLASS} />
+              </Field>
+            )}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="ghost" onClick={() => setBookingAction(null)}>Back</Button>
+              <Button
+                variant={bookingAction.mode === 'reschedule' ? 'primary' : 'danger'}
+                busy={bookingActionBusy}
+                disabled={bookingAction.mode === 'reschedule' && !bookingActionInput}
+                onClick={submitBookingAction}
+              >
+                {bookingAction.mode === 'reschedule' ? 'Confirm new time' : bookingAction.mode === 'decline' ? 'Decline request' : 'Cancel booking'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ============================================================== */}
       {/* MODAL 1: SCHEDULE CONSULTATION                                 */}

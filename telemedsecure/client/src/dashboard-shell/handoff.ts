@@ -25,6 +25,9 @@ const REGISTRY: Record<string, HandoffBadge> = {
   DISPENSED: { label: 'Dispensed', tone: 'success' },
   REVOKED: { label: 'Revoked', tone: 'danger' },
   // Consultations
+  PENDING: { label: 'Pending', tone: 'warning' },
+  CONFIRMED: { label: 'Confirmed', tone: 'success' },
+  DECLINED: { label: 'Declined', tone: 'danger' },
   SCHEDULED: { label: 'Scheduled', tone: 'info' },
   IN_PROGRESS: { label: 'In progress', tone: 'warning' },
   COMPLETED: { label: 'Completed', tone: 'success' },
@@ -38,7 +41,6 @@ const REGISTRY: Record<string, HandoffBadge> = {
   FINALIZED: { label: 'Finalized', tone: 'success' },
   URGENT_FLAGGED: { label: 'Urgent flagged', tone: 'danger' },
   // Invoices
-  PENDING: { label: 'Pending', tone: 'warning' },
   PARTIALLY_PAID: { label: 'Partially paid', tone: 'info' },
   PAID: { label: 'Paid', tone: 'success' },
   REFUNDED: { label: 'Refunded', tone: 'neutral' },
@@ -81,7 +83,7 @@ const REGISTRY: Record<string, HandoffBadge> = {
 /** Ordered clinical chains, for progress rails and stage comparison. */
 export const HANDOFF_CHAINS = {
   prescription: ['ISSUED', 'DISPENSED'],
-  consultation: ['SCHEDULED', 'IN_PROGRESS', 'COMPLETED'],
+  consultation: ['PENDING', 'CONFIRMED', 'IN_PROGRESS', 'COMPLETED'],
   lab: ['ORDERED', 'SAMPLE_COLLECTED', 'PROCESSING', 'COMPLETED'],
   radiology: ['ORDERED', 'IN_REVIEW', 'FINALIZED'],
 } as const;

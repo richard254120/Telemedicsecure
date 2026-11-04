@@ -143,6 +143,21 @@ async function seedDemo() {
     }
   });
 
+  // 3b. A fresh PENDING self-booking so the accept/decline/reschedule workflow
+  // is visible on the clinician dashboard immediately after seeding.
+  const pendingBookingId = 'demo-pending-1';
+  await prisma.consultation.upsert({
+    where: { id: pendingBookingId },
+    update: { status: 'PENDING' },
+    create: {
+      id: pendingBookingId,
+      patientId: patient.id,
+      doctorId: doctor.id,
+      scheduledAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000),
+      status: 'PENDING',
+    },
+  });
+
   // 4. Envelope Encrypt Consultation Notes
   console.log('🔐 Envelope-encrypting clinical consultation notes (AES-256-GCM + DEK)...');
   const clinicalNotesText = 'Patient presents with intermittent chest tightness and hypertension. Recommended ACE inhibitor therapy and sodium restriction.';
@@ -324,7 +339,8 @@ async function seedDemo() {
     update: { status: AccessGrantStatus.ACTIVE, redeemedAt: new Date(), expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) },
     create: {
       patientId: patient.id,
-      doctorId: specialist.id,
+      granteeId: specialist.id,
+      granteeRole: Role.DOCTOR,
       tokenHash: crypto.createHash('sha256').update(sampleCode).digest('hex'),
       scope: 'RECORDS_READ',
       purpose: 'Second opinion on hypertension management',

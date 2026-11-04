@@ -5,7 +5,7 @@ import { encryptDataEnvelope, decryptDataEnvelope } from '../utils/crypto';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { gdprService } from '../services/gdpr.service';
 import { createChainedAuditEvent } from '../services/audit.service';
-import { getAccessiblePatientIds, canViewPatient, getActiveGrantForDoctor, logPatientAccess } from '../services/panelAccess.service';
+import { getAccessiblePatientIds, canViewPatient, getActiveGrant, logPatientAccess } from '../services/panelAccess.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -198,9 +198,9 @@ router.get('/:id', async (req, res) => {
   // Rule Check: Doctor/Nurse accessing record of patient outside their panel
   if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
     let allowed = await canViewPatient(user, record.patientId);
-    // Doctors additionally honored for a temporary patient-issued grant.
-    if (!allowed && user.role === Role.DOCTOR) {
-      const grant = await getActiveGrantForDoctor(user.id, record.patientId);
+    // Clinicians are additionally honored for a temporary patient-issued grant.
+    if (!allowed) {
+      const grant = await getActiveGrant(user.id, record.patientId);
       if (grant) allowed = true;
     }
     if (!allowed) {

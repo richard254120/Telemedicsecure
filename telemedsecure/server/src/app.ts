@@ -19,6 +19,7 @@ import billingRoutes from './routes/billing.routes';
 import stationRoutes from './routes/station.routes';
 import accessRoutes from './routes/access.routes';
 import careTeamRoutes from './routes/careTeam.routes';
+import notificationRoutes from './routes/notification.routes';
 
 const app = express();
 
@@ -300,6 +301,7 @@ app.use('/api/v1/billing', billingRoutes);
 app.use('/api/v1/stations', stationRoutes);
 app.use('/api/v1/access', accessRoutes);
 app.use('/api/v1/care-team', careTeamRoutes);
+app.use('/api/v1/notifications', notificationRoutes);
 
 // Fallback for unmatched routes
 app.use((req, res, next) => {

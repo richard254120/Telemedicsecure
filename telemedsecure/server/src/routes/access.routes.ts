@@ -1,9 +1,10 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
-import { PrismaClient, Role, AccessGrantStatus } from '@prisma/client';
+import { PrismaClient, Role, AccessGrantStatus, NotificationType } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import { createChainedAuditEvent } from '../services/audit.service';
 import { rulesEngine } from '../services/rulesEngine.service';
+import { notify } from '../services/notification.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -16,6 +17,21 @@ const TTL_MS: Record<string, number> = {
   '72h': 72 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
+
+// Any authenticated staff member (everyone except the patient themselves) may be
+// issued a key and may redeem one. This generalises the old doctor-only model.
+const STAFF_ROLES: Role[] = [
+  Role.DOCTOR,
+  Role.NURSE,
+  Role.PHARMACIST,
+  Role.RECEPTIONIST,
+  Role.ADMIN,
+  Role.LAB_TECHNICIAN,
+  Role.RADIOLOGIST,
+  Role.BILLING_OFFICER,
+  Role.TRIAGE_OFFICER,
+  Role.CARE_COORDINATOR,
+];
 
 // RFC-4648 base32 alphabet (no padding): unambiguous, human-readable codes.
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -32,27 +48,51 @@ function generateCode(): string {
 const normalizeCode = (raw: string) => (raw || '').trim().toUpperCase().replace(/\s+/g, '');
 const hashToken = (code: string) => crypto.createHash('sha256').update(code).digest('hex');
 
-const doctorSelect = { id: true, firstName: true, lastName: true, email: true, specialty: true };
+const granteeSelect = { id: true, firstName: true, lastName: true, email: true, role: true, specialty: true };
 const patientSelect = { id: true, firstName: true, lastName: true, email: true };
+
+const displayName = (u: any) =>
+  u?.role === Role.DOCTOR ? `Dr. ${u.lastName}` : `${u.firstName} ${u.lastName}`;
+
+/**
+ * GET /api/v1/access/grantees  (PATIENT)
+ * Directory of active staff the patient may bind an access key to. Deliberately
+ * broader than the old doctors-only picker so a nurse, pharmacist, etc. can be
+ * authorised to view the patient's full record.
+ */
+router.get('/grantees', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
+  try {
+    const grantees = await prisma.user.findMany({
+      where: { role: { not: Role.PATIENT }, isActive: true },
+      select: granteeSelect,
+      orderBy: [{ role: 'asc' }, { lastName: 'asc' }],
+    });
+    res.json(grantees);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch grantees directory', details: err.message });
+  }
+});
 
 /**
  * POST /api/v1/access/grants  (PATIENT)
- * Issue a temporary, doctor-bound, time-boxed read-access key. The plaintext
+ * Issue a temporary, staff-bound, time-boxed read-access key. The plaintext
  * code is returned once and never stored (only its SHA-256 hash is kept).
+ * `granteeId` names any active staff member; `doctorId` is accepted as an alias.
  */
 router.post('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const { doctorId, ttl = '24h', purpose } = req.body;
+    const { granteeId: rawGranteeId, doctorId, ttl = '24h', purpose } = req.body;
+    const granteeId = rawGranteeId || doctorId;
 
-    if (!doctorId) return res.status(400).json({ error: 'doctorId is required' });
+    if (!granteeId) return res.status(400).json({ error: 'granteeId is required' });
     if (!TTL_MS[ttl]) return res.status(400).json({ error: 'ttl must be one of 1h, 24h, 72h, 7d' });
 
-    const doctor = await prisma.user.findFirst({
-      where: { id: doctorId, role: Role.DOCTOR, isActive: true },
-      select: doctorSelect,
+    const grantee = await prisma.user.findFirst({
+      where: { id: granteeId, role: { not: Role.PATIENT }, isActive: true },
+      select: granteeSelect,
     });
-    if (!doctor) return res.status(404).json({ error: 'Selected doctor not found or inactive' });
+    if (!grantee) return res.status(404).json({ error: 'Selected staff member not found or inactive' });
 
     const code = generateCode();
     const tokenHash = hashToken(code);
@@ -61,7 +101,8 @@ router.post('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Re
     const grant = await prisma.accessGrant.create({
       data: {
         patientId: user.id,
-        doctorId: doctor.id,
+        granteeId: grantee.id,
+        granteeRole: grantee.role,
         tokenHash,
         scope: 'RECORDS_READ',
         purpose: purpose || null,
@@ -77,8 +118,17 @@ router.post('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Re
       ipAddress: req.ip || 'unknown',
     });
 
+    // Let the chosen staff member know a key was issued in their name.
+    await notify({
+      userId: grantee.id,
+      type: NotificationType.ACCESS_GRANTED,
+      title: 'New access key issued to you',
+      body: `${user.firstName} ${user.lastName} issued you a time-limited access key${purpose ? ` for "${purpose}"` : ''}. Redeem it from your dashboard.`,
+      link: `/dashboard?tab=shared`,
+    });
+
     // Code is shown once here; it cannot be retrieved later.
-    res.status(201).json({ id: grant.id, code, expiresAt: grant.expiresAt, doctor });
+    res.status(201).json({ id: grant.id, code, expiresAt: grant.expiresAt, grantee });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to issue access key', details: err.message });
   }
@@ -93,14 +143,15 @@ router.get('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Res
     const user = (req as any).user;
     const grants = await prisma.accessGrant.findMany({
       where: { patientId: user.id },
-      include: { doctor: { select: doctorSelect } },
+      include: { grantee: { select: granteeSelect } },
       orderBy: { createdAt: 'desc' },
     });
 
     const now = Date.now();
     res.json(grants.map((g) => ({
       id: g.id,
-      doctor: g.doctor,
+      grantee: g.grantee,
+      granteeRole: g.granteeRole,
       scope: g.scope,
       purpose: g.purpose,
       status: g.status,
@@ -128,6 +179,7 @@ router.post('/grants/:id/revoke', requireRole([Role.PATIENT]), async (req: Reque
     const user = (req as any).user;
     const grant = await prisma.accessGrant.findFirst({
       where: { id: String(req.params.id), patientId: user.id },
+      include: { grantee: { select: granteeSelect } },
     });
     if (!grant) return res.status(404).json({ error: 'Grant not found' });
 
@@ -143,6 +195,14 @@ router.post('/grants/:id/revoke', requireRole([Role.PATIENT]), async (req: Reque
       ipAddress: req.ip || 'unknown',
     });
 
+    await notify({
+      userId: grant.granteeId,
+      type: NotificationType.ACCESS_REVOKED,
+      title: 'Access key revoked',
+      body: `${user.firstName} ${user.lastName} revoked the access key issued to you.`,
+      link: `/dashboard?tab=shared`,
+    });
+
     res.json({ id: updated.id, status: updated.status, revokedAt: updated.revokedAt });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to revoke access grant', details: err.message });
@@ -151,7 +211,7 @@ router.post('/grants/:id/revoke', requireRole([Role.PATIENT]), async (req: Reque
 
 /**
  * POST /api/v1/access/grants/:id/regenerate  (PATIENT)
- * Revoke the current key and issue a fresh code for the same doctor and window.
+ * Revoke the current key and issue a fresh code for the same grantee and window.
  * The old code stops working immediately; the new code is returned once.
  */
 router.post('/grants/:id/regenerate', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
@@ -173,14 +233,15 @@ router.post('/grants/:id/regenerate', requireRole([Role.PATIENT]), async (req: R
     const fresh = await prisma.accessGrant.create({
       data: {
         patientId: user.id,
-        doctorId: grant.doctorId,
+        granteeId: grant.granteeId,
+        granteeRole: grant.granteeRole,
         tokenHash,
         scope: grant.scope,
         purpose: grant.purpose,
         expiresAt: grant.expiresAt,
         status: AccessGrantStatus.ACTIVE,
       },
-      include: { doctor: { select: doctorSelect } },
+      include: { grantee: { select: granteeSelect } },
     });
 
     await createChainedAuditEvent({
@@ -190,24 +251,24 @@ router.post('/grants/:id/regenerate', requireRole([Role.PATIENT]), async (req: R
       ipAddress: req.ip || 'unknown',
     });
 
-    res.status(201).json({ id: fresh.id, code, expiresAt: fresh.expiresAt, doctor: fresh.doctor });
+    res.status(201).json({ id: fresh.id, code, expiresAt: fresh.expiresAt, grantee: fresh.grantee });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to regenerate access key', details: err.message });
   }
 });
 
 /**
- * POST /api/v1/access/redeem  (DOCTOR)
- * Redeem a patient-issued code bound to this doctor. Sets redeemedAt so the
- * chart becomes readable for the remainder of the window.
+ * POST /api/v1/access/redeem  (STAFF)
+ * Redeem a patient-issued code bound to this staff member. Sets redeemedAt so
+ * the chart becomes readable for the remainder of the window.
  */
-router.post('/redeem', requireRole([Role.DOCTOR]), async (req: Request, res: Response) => {
+router.post('/redeem', requireRole(STAFF_ROLES), async (req: Request, res: Response) => {
   const user = (req as any).user;
   const code = normalizeCode(req.body?.code);
   const fail = async () => {
     await rulesEngine.triggerViolation({
       ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
-      description: `Doctor ${user.email} attempted to redeem an invalid/expired/foreign access key.`,
+      description: `Staff ${user.email} attempted to redeem an invalid/expired/foreign access key.`,
       userId: user.id,
       sourceIp: req.ip,
       resource: 'AccessGrant:Redeem',
@@ -226,7 +287,7 @@ router.post('/redeem', requireRole([Role.DOCTOR]), async (req: Request, res: Res
 
     if (
       !grant ||
-      grant.doctorId !== user.id ||
+      grant.granteeId !== user.id ||
       grant.status !== AccessGrantStatus.ACTIVE ||
       grant.revokedAt ||
       grant.expiresAt.getTime() <= Date.now()
@@ -234,6 +295,7 @@ router.post('/redeem', requireRole([Role.DOCTOR]), async (req: Request, res: Res
       return await fail();
     }
 
+    const firstRedemption = !grant.redeemedAt;
     const updated = await prisma.accessGrant.update({
       where: { id: grant.id },
       data: { redeemedAt: grant.redeemedAt || new Date() },
@@ -245,6 +307,17 @@ router.post('/redeem', requireRole([Role.DOCTOR]), async (req: Request, res: Res
       userId: user.id,
       ipAddress: req.ip || 'unknown',
     });
+
+    // Tell the patient their record was just unlocked by the person they chose.
+    if (firstRedemption) {
+      await notify({
+        userId: grant.patientId,
+        type: NotificationType.ACCESS_GRANTED,
+        title: 'Your access key was used',
+        body: `${displayName(user)} redeemed your access key and can now view your records until ${updated.expiresAt.toLocaleString()}.`,
+        link: `/patient?tab=access`,
+      });
+    }
 
     res.json({
       id: grant.id,
@@ -260,15 +333,15 @@ router.post('/redeem', requireRole([Role.DOCTOR]), async (req: Request, res: Res
 });
 
 /**
- * GET /api/v1/access/shared-with-me  (DOCTOR)
- * Every grant bound to this doctor, so the UI can distinguish "awaiting key"
- * (issued but not yet redeemed) from an unlocked, counting-down window.
+ * GET /api/v1/access/shared-with-me  (STAFF)
+ * Every grant bound to this staff member, so the UI can distinguish "awaiting
+ * key" (issued but not yet redeemed) from an unlocked, counting-down window.
  */
-router.get('/shared-with-me', requireRole([Role.DOCTOR]), async (req: Request, res: Response) => {
+router.get('/shared-with-me', requireRole(STAFF_ROLES), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     const grants = await prisma.accessGrant.findMany({
-      where: { doctorId: user.id },
+      where: { granteeId: user.id },
       include: { patient: { select: patientSelect } },
       orderBy: { createdAt: 'desc' },
     });

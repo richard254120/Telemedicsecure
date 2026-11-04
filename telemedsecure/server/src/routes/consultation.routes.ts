@@ -1,11 +1,12 @@
 import { Router } from 'express';
-import { PrismaClient, Role } from '@prisma/client';
+import { PrismaClient, Role, ConsultationStatus, NotificationType } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import { encryptDataEnvelope, decryptDataEnvelope } from '../utils/crypto';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { gdprService } from '../services/gdpr.service';
 import { createChainedAuditEvent } from '../services/audit.service';
-import { getAccessiblePatientIds } from '../services/panelAccess.service';
+import { getAccessiblePatientIds, canViewPatient } from '../services/panelAccess.service';
+import { notify } from '../services/notification.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -174,6 +175,8 @@ router.post('/book', requireRole([Role.PATIENT, Role.DOCTOR]), async (req, res) 
       data: {
         patientId,
         doctorId,
+        // New self-bookings start as a PENDING request the clinician must action.
+        status: ConsultationStatus.PENDING,
         scheduledAt: new Date(scheduledAt),
         encryptedNotes,
         notesIv,
@@ -192,6 +195,17 @@ router.post('/book', requireRole([Role.PATIENT, Role.DOCTOR]), async (req, res) 
       resource: `Consultation:${consultation.id}`,
       userId: user.id,
       ipAddress: req.ip || 'unknown'
+    });
+
+    // Tell the clinician there is a new booking request awaiting them.
+    const when = new Date(scheduledAt).toLocaleString();
+    await notify({
+      userId: doctorId,
+      type: NotificationType.BOOKING_CREATED,
+      title: 'New consultation request',
+      body: `${user.firstName} ${user.lastName} requested a consultation for ${when}.`,
+      link: `/doctor?tab=schedule&consultationId=${consultation.id}`,
+      consultationId: consultation.id
     });
 
     res.status(201).json(consultation);
@@ -259,6 +273,17 @@ router.post('/', requireRole([Role.DOCTOR, Role.ADMIN, Role.RECEPTIONIST, Role.C
     userId: user.id,
     ipAddress: req.ip || 'unknown'
   });
+
+  // Staff-initiated bookings are already accepted, so surface them to the patient.
+  await notify({
+    userId: patientId,
+    type: NotificationType.BOOKING_ACCEPTED,
+    title: 'Appointment scheduled',
+    body: `${user.firstName} ${user.lastName} scheduled a consultation for ${new Date(scheduledAt).toLocaleString()}.`,
+    link: `/patient?tab=appointments&consultationId=${consultation.id}`,
+    consultationId: consultation.id
+  });
+
   res.status(201).json(consultation);
 });
 
@@ -363,6 +388,260 @@ router.get('/:id/notes', async (req, res) => {
     ipAddress: req.ip || 'unknown'
   });
   res.json({ notes });
+});
+
+// ---------------------------------------------------------------------------
+// Booking lifecycle: accept / decline / reschedule / cancel
+//
+// A self-booking lands as PENDING. The assigned clinician (or a nurse with
+// patient access, or an admin) either accepts or declines it; either way the
+// patient is notified. Any still-active booking can be rescheduled by the
+// clinician (auto-moves + notifies the patient) or cancelled by either side.
+// ---------------------------------------------------------------------------
+
+const CLINICIAN_MANAGER_ROLES = [Role.DOCTOR, Role.NURSE, Role.ADMIN];
+const ACTIVE_BOOKING_STATES: ConsultationStatus[] = [
+  ConsultationStatus.PENDING,
+  ConsultationStatus.CONFIRMED,
+  ConsultationStatus.SCHEDULED,
+];
+
+/**
+ * Can this staff user action the booking? Admins yes; the assigned doctor yes;
+ * a nurse only if the patient is on their care panel.
+ */
+async function canManageBooking(user: any, consultation: any): Promise<boolean> {
+  if (user.role === Role.ADMIN) return true;
+  if (user.role === Role.DOCTOR) return consultation.doctorId === user.id;
+  if (user.role === Role.NURSE) return canViewPatient(user, consultation.patientId);
+  return false;
+}
+
+// Accept a PENDING booking request -> CONFIRMED
+router.patch('/:id/accept', requireRole(CLINICIAN_MANAGER_ROLES), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const id = req.params.id as string;
+    const consultation = await prisma.consultation.findUnique({
+      where: { id },
+      include: { doctor: { select: { firstName: true, lastName: true } } },
+    });
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+    if (consultation.status !== ConsultationStatus.PENDING) {
+      return res.status(409).json({ error: 'Only pending requests can be accepted' });
+    }
+    if (!(await canManageBooking(user, consultation))) {
+      return res.status(403).json({ error: 'You are not authorized to action this booking' });
+    }
+
+    const updated = await prisma.consultation.update({
+      where: { id },
+      data: { status: ConsultationStatus.CONFIRMED, confirmedAt: new Date() },
+    });
+
+    await createChainedAuditEvent({
+      action: 'BOOKING_ACCEPTED',
+      resource: `Consultation:${id}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown',
+    });
+
+    await notify({
+      userId: consultation.patientId,
+      type: NotificationType.BOOKING_ACCEPTED,
+      title: 'Appointment confirmed',
+      body: `Dr. ${consultation.doctor.lastName} accepted your consultation for ${updated.scheduledAt.toLocaleString()}.`,
+      link: `/patient?tab=appointments&consultationId=${id}`,
+      consultationId: id,
+    });
+
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to accept booking', details: err.message });
+  }
+});
+
+// Decline a PENDING booking request -> DECLINED
+router.patch('/:id/decline', requireRole(CLINICIAN_MANAGER_ROLES), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const id = req.params.id as string;
+    const reason: string = (req.body?.reason || '').trim() || 'The clinician is unavailable at this time.';
+    const consultation = await prisma.consultation.findUnique({
+      where: { id },
+      include: { doctor: { select: { firstName: true, lastName: true } } },
+    });
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+    if (consultation.status !== ConsultationStatus.PENDING) {
+      return res.status(409).json({ error: 'Only pending requests can be declined' });
+    }
+    if (!(await canManageBooking(user, consultation))) {
+      return res.status(403).json({ error: 'You are not authorized to action this booking' });
+    }
+
+    const updated = await prisma.consultation.update({
+      where: { id },
+      data: { status: ConsultationStatus.DECLINED, declineReason: reason },
+    });
+
+    await createChainedAuditEvent({
+      action: 'BOOKING_DECLINED',
+      resource: `Consultation:${id}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown',
+    });
+
+    await notify({
+      userId: consultation.patientId,
+      type: NotificationType.BOOKING_DECLINED,
+      title: 'Appointment declined',
+      body: `Dr. ${consultation.doctor.lastName} declined your request: ${reason}`,
+      link: `/patient?tab=appointments&consultationId=${id}`,
+      consultationId: id,
+    });
+
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to decline booking', details: err.message });
+  }
+});
+
+// Reschedule an active booking -> auto-moves + notifies the patient
+router.patch('/:id/reschedule', requireRole(CLINICIAN_MANAGER_ROLES), async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const id = req.params.id as string;
+    const { newScheduledAt, reason } = req.body || {};
+    if (!newScheduledAt) {
+      return res.status(400).json({ error: 'newScheduledAt is required' });
+    }
+    const next = new Date(newScheduledAt);
+    if (Number.isNaN(next.getTime())) {
+      return res.status(400).json({ error: 'newScheduledAt is not a valid date' });
+    }
+    const consultation = await prisma.consultation.findUnique({
+      where: { id },
+      include: { doctor: { select: { firstName: true, lastName: true } } },
+    });
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+    if (!ACTIVE_BOOKING_STATES.includes(consultation.status)) {
+      return res.status(409).json({ error: 'This booking can no longer be rescheduled' });
+    }
+    if (!(await canManageBooking(user, consultation))) {
+      return res.status(403).json({ error: 'You are not authorized to reschedule this booking' });
+    }
+
+    const previous = consultation.scheduledAt;
+    const wasPending = consultation.status === ConsultationStatus.PENDING;
+    const updated = await prisma.consultation.update({
+      where: { id },
+      data: {
+        // A clinician proposing a new time is an implicit acceptance.
+        status: ConsultationStatus.CONFIRMED,
+        scheduledAt: next,
+        confirmedAt: consultation.confirmedAt ?? new Date(),
+        rescheduledFrom: previous,
+        rescheduledById: user.id,
+        rescheduledAt: new Date(),
+      },
+    });
+
+    await createChainedAuditEvent({
+      action: 'BOOKING_RESCHEDULED',
+      resource: `Consultation:${id}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown',
+    });
+
+    const note = (reason || '').trim() ? ` Reason: ${String(reason).trim()}` : '';
+    await notify({
+      userId: consultation.patientId,
+      type: NotificationType.BOOKING_RESCHEDULED,
+      title: 'Appointment rescheduled',
+      body: `Dr. ${consultation.doctor.lastName} moved your consultation from ${previous.toLocaleString()} to ${next.toLocaleString()}.${note}`,
+      link: `/patient?tab=appointments&consultationId=${id}`,
+      consultationId: id,
+    });
+
+    // If the request was still pending, let the clinician know it was resolved.
+    if (wasPending && consultation.doctorId !== user.id) {
+      await notify({
+        userId: consultation.doctorId,
+        type: NotificationType.BOOKING_RESCHEDULED,
+        title: 'Your booking was rescheduled',
+        body: `Your consultation with the patient on ${previous.toLocaleString()} was moved to ${next.toLocaleString()}.`,
+        link: `/doctor?tab=schedule&consultationId=${id}`,
+        consultationId: id,
+      });
+    }
+
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to reschedule booking', details: err.message });
+  }
+});
+
+// Cancel a booking: the patient (owner) or a managing clinician, from any active state
+router.patch('/:id/cancel', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const id = req.params.id as string;
+    const reason: string = (req.body?.reason || '').trim() || 'No reason provided.';
+    const consultation = await prisma.consultation.findUnique({
+      where: { id },
+      include: {
+        patient: { select: { firstName: true, lastName: true } },
+        doctor: { select: { firstName: true, lastName: true } },
+      },
+    });
+    if (!consultation) return res.status(404).json({ error: 'Consultation not found' });
+    if (!ACTIVE_BOOKING_STATES.includes(consultation.status)) {
+      return res.status(409).json({ error: 'This booking can no longer be cancelled' });
+    }
+
+    const isPatientOwner = consultation.patientId === user.id;
+    const isManager = CLINICIAN_MANAGER_ROLES.includes(user.role) && (await canManageBooking(user, consultation));
+    if (!isPatientOwner && !isManager) {
+      return res.status(403).json({ error: 'You are not authorized to cancel this booking' });
+    }
+
+    const updated = await prisma.consultation.update({
+      where: { id },
+      data: {
+        status: ConsultationStatus.CANCELLED,
+        cancelReason: reason,
+        cancelledById: user.id,
+        cancelledAt: new Date(),
+      },
+    });
+
+    await createChainedAuditEvent({
+      action: 'BOOKING_CANCELLED',
+      resource: `Consultation:${id}`,
+      userId: user.id,
+      ipAddress: req.ip || 'unknown',
+    });
+
+    const byWhom = isPatientOwner
+      ? `${consultation.patient.firstName} ${consultation.patient.lastName}`
+      : `Dr. ${consultation.doctor.lastName}`;
+    // Notify the party that did NOT cancel.
+    const recipientId = isPatientOwner ? consultation.doctorId : consultation.patientId;
+    await notify({
+      userId: recipientId,
+      type: NotificationType.BOOKING_CANCELLED,
+      title: 'Appointment cancelled',
+      body: `${byWhom} cancelled the consultation scheduled for ${consultation.scheduledAt.toLocaleString()}. Reason: ${reason}`,
+      link: isPatientOwner
+        ? `/doctor?tab=schedule&consultationId=${id}`
+        : `/patient?tab=appointments&consultationId=${id}`,
+      consultationId: id,
+    });
+
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to cancel booking', details: err.message });
+  }
 });
 
 export default router;
