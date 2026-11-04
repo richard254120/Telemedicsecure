@@ -2,7 +2,13 @@ services:
   - type: web
     name: telemedsecure-backend
     env: node
+    # Build phase on Render has NO access to synced Secrets and runs before the
+    # DB connection is guaranteed — never migrate or seed here.
     buildCommand: npm install && npm run build
+    # preDeployCommand runs once after build, with all env vars/secrets injected,
+    # before new instances start. `db seed` is idempotent (upsert + it refuses to
+    # overwrite existing credentials unless SEED_FORCE_RESET=true).
+    preDeployCommand: npx prisma migrate deploy && npx prisma db seed
     startCommand: npm start
     envVars:
       - key: DATABASE_URL

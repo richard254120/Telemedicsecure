@@ -23,31 +23,44 @@ async function main() {
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@telemed.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'ChangeMe123!';
     if (IS_PRODUCTION && !process.env.ADMIN_PASSWORD) {
-      throw new Error('Refusing to bootstrap an administrator with the built-in default password. Set ADMIN_PASSWORD (and ADMIN_EMAIL) in the deployment environment.');
-    }
-    const adminPasswordHash = await argon2.hash(adminPassword);
-    await prisma.user.upsert({
-      where: { email: adminEmail },
-      update: RESET_EXISTING ? {
-        passwordHash: adminPasswordHash,
-        isActive: true,
-        failedAttempts: 0,
-        lockedUntil: null,
-        verificationStatus: VerificationStatus.VERIFIED,
-        mustChangePassword: true
-      } : {},
-      create: {
-        email: adminEmail,
-        passwordHash: adminPasswordHash,
-        role: Role.ADMIN,
-        firstName: 'Chief',
-        lastName: 'Administrator',
-        isActive: true,
-        verificationStatus: VerificationStatus.VERIFIED,
-        mustChangePassword: true,
-        verifiedAt: new Date()
+      // Bootstrapping a new admin without a real secret is refused, but a
+      // re-run (build/startup/hooks) against a database that already has the
+      // admin must not fail the whole deploy over it.
+      const existingAdmin = await prisma.user.findUnique({ where: { email: adminEmail } });
+      if (existingAdmin) {
+        console.warn(`WARNING: ADMIN_PASSWORD is not set, but administrator ${adminEmail} already exists. Leaving the stored credentials untouched.`);
+        if (!SEED_DEMO_USERS) {
+          console.log('Seeding skipped: administrator already provisioned (production).');
+          return;
+        }
+      } else {
+        throw new Error('Refusing to bootstrap an administrator with the built-in default password. Set ADMIN_PASSWORD (and ADMIN_EMAIL) in the deployment environment.');
       }
-    });
+    } else {
+      const adminPasswordHash = await argon2.hash(adminPassword);
+      await prisma.user.upsert({
+        where: { email: adminEmail },
+        update: RESET_EXISTING ? {
+          passwordHash: adminPasswordHash,
+          isActive: true,
+          failedAttempts: 0,
+          lockedUntil: null,
+          verificationStatus: VerificationStatus.VERIFIED,
+          mustChangePassword: true
+        } : {},
+        create: {
+          email: adminEmail,
+          passwordHash: adminPasswordHash,
+          role: Role.ADMIN,
+          firstName: 'Chief',
+          lastName: 'Administrator',
+          isActive: true,
+          verificationStatus: VerificationStatus.VERIFIED,
+          mustChangePassword: true,
+          verifiedAt: new Date()
+        }
+      });
+    }
 
   if (!SEED_DEMO_USERS) {
     console.log('Seeding completed: administrator bootstrapped, demo roster skipped (production).');
