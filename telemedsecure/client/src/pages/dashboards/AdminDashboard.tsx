@@ -12,7 +12,7 @@
  *  - ask the resource store for exactly the endpoints the active panel reads;
  *  - own the session-expiry gate and the cross-panel dialogs.
  */
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Calendar, FileSearch, LockKeyhole, LogIn, UserPlus } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -23,7 +23,8 @@ import { AUTH_EXPIRED_EVENT } from './admin/api';
 import { selectRows, useAdminData, type ResourceKey } from './admin/hooks/useAdminData';
 import { useAdminActions, type ActionResult } from './admin/hooks/useAdminActions';
 import { useToast } from './admin/hooks/useToast';
-import type { AdminUser, ComplianceViolation, Incident, PrescriptionAudit, SystemStats } from './admin/types';
+import { useAdminLive } from './admin/hooks/useAdminLive';
+import type { AdminConsultation, AdminInvoice, AdminUser, ComplianceViolation, ErasureRequestEntry, Incident, PrescriptionAudit, SystemStats } from './admin/types';
 
 /* Panels and heavy dialogs are code-split: opening the console no longer pulls
  * the SMS ledger, the EPCS registry or recharts into the first paint. */
@@ -34,6 +35,9 @@ const PrescriptionsSection = lazy(() => import('./admin/sections/PrescriptionsSe
 const WorkforceSection = lazy(() => import('./admin/sections/WorkforceSection'));
 const PatientsSection = lazy(() => import('./admin/sections/PatientsSection'));
 const SmsSection = lazy(() => import('./admin/sections/SmsSection'));
+const ConsultationSection = lazy(() => import('./admin/sections/ConsultationSection'));
+const FinanceSection = lazy(() => import('./admin/sections/FinanceSection'));
+const PrivacySection = lazy(() => import('./admin/sections/PrivacySection'));
 const ProvisionStaffModal = lazy(() => import('./admin/modals/ProvisionStaffModal'));
 const AuditorDossierModal = lazy(() => import('./admin/modals/AuditorDossierModal'));
 const TwoFactorSetupModal = lazy(() =>
@@ -52,6 +56,9 @@ const TAB_RESOURCES: Record<AdminSectionId, ResourceKey[]> = {
   users: ['users', 'invitations'],
   patients: ['users'],
   sms: ['smsLogs', 'smsStatus'],
+  consultations: ['consultations', 'stats'],
+  finance: ['billingStats', 'invoices', 'claims'],
+  privacy: ['erasureRequests', 'users'],
 };
 
 const DOSSIER_RESOURCES: ResourceKey[] = ['users', 'violations', 'alerts', 'chain', 'stats'];
@@ -95,6 +102,18 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     ensure(TAB_RESOURCES[activeTab]);
   }, [activeTab, ensure]);
+
+  /* Real-time: a server ops-event (booking, payment, claim, erasure) re-pulls
+   * exactly the resources of whichever panel is mounted right now. The active tab
+   * is mirrored in a ref so the socket subscribes once, not on every tab change. */
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => {
+    activeTabRef.current = activeTab;
+  }, [activeTab]);
+  const onLiveEvent = useCallback(() => {
+    void refresh(TAB_RESOURCES[activeTabRef.current]);
+  }, [refresh]);
+  const live = useAdminLive(user?.id, user?.role, onLiveEvent);
 
   const selectTab = useCallback((tab: AdminSectionId) => {
     setSearchParams(previous => {
@@ -183,6 +202,9 @@ const AdminDashboard: React.FC = () => {
     const incidents = selectRows<Incident>(state.incidents);
     const prescriptions = selectRows<PrescriptionAudit>(state.prescriptions);
     const smsLogs = selectRows<{ status: string }>(state.smsLogs);
+    const consultations = selectRows<AdminConsultation>(state.consultations);
+    const invoices = selectRows<AdminInvoice>(state.invoices);
+    const erasures = selectRows<ErasureRequestEntry>(state.erasureRequests);
     const stats = state.stats.data as SystemStats | null;
 
     return {
@@ -192,6 +214,9 @@ const AdminDashboard: React.FC = () => {
       prescriptions: { value: prescriptions.filter(item => item.signatureStatus === 'TAMPERED').length, status: state.prescriptions.status },
       users: { value: roster.filter(item => item.verificationStatus === 'PENDING_REVIEW').length, status: state.users.status },
       patients: { value: roster.filter(item => item.role === 'PATIENT').length, status: state.users.status },
+      consultations: { value: consultations.filter(item => item.status === 'PENDING').length, status: state.consultations.status },
+      finance: { value: invoices.filter(item => item.status === 'PENDING' || item.status === 'PARTIALLY_PAID').length, status: state.invoices.status },
+      privacy: { value: erasures.length, status: state.erasureRequests.status },
       sms: { value: smsLogs.filter(log => log.status === 'FAILED').length, status: state.smsLogs.status },
     } as Record<AdminSectionId, { value: number; status: typeof state.stats.status }>;
   }, [state]);
@@ -254,11 +279,27 @@ const AdminDashboard: React.FC = () => {
       {activeTab === 'sms' && (
         <SmsSection smsLogs={state.smsLogs} smsStatus={state.smsStatus} actions={actions} onRetry={onRetryAll} />
       )}
+      {activeTab === 'consultations' && (
+        <ConsultationSection consultations={state.consultations} actions={actions} onRetry={onRetryAll} />
+      )}
+      {activeTab === 'finance' && (
+        <FinanceSection billingStats={state.billingStats} invoices={state.invoices} claims={state.claims} actions={actions} onRetry={onRetryAll} />
+      )}
+      {activeTab === 'privacy' && (
+        <PrivacySection erasureRequests={state.erasureRequests} users={state.users} actions={actions} onRetry={onRetryAll} />
+      )}
     </Suspense>
   );
 
   const headerActions = (
     <>
+      <span
+        title={live.connected ? 'Live updates connected over the console socket' : 'Reconnecting to the live feed'}
+        className="hidden items-center gap-1.5 rounded-xl border border-slate-600/40 bg-slate-800 px-3 py-2.5 text-xs font-semibold text-slate-300 sm:inline-flex"
+      >
+        <span className={`h-2 w-2 rounded-full ${live.connected ? 'animate-pulse bg-emerald-400' : 'bg-slate-500'}`} />
+        {live.connected ? 'LIVE' : 'CONNECTING'}
+      </span>
       <Button variant="secondary" icon={Calendar} onClick={openCalendar} className="hidden sm:inline-flex">
         Calendar
       </Button>

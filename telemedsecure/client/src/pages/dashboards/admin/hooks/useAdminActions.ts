@@ -232,6 +232,65 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
     [getAuthHeaders, run],
   );
 
+  /* ---------------------------------------------------------------- * 
+   * Consultation oversight, finance and privacy mutations.
+   * ---------------------------------------------------------------- */
+
+  const actionBooking = useCallback(
+    (consultationId: string, action: api.BookingAction, label: string, body: Record<string, unknown> = {}) =>
+      run(
+        `booking:${consultationId}:${action}`,
+        () => api.actionBooking(getAuthHeaders, consultationId, action, body),
+        () => `Booking ${label}.`,
+        ['consultations', 'stats'],
+      ),
+    [getAuthHeaders, run],
+  );
+
+  const settleInvoice = useCallback(
+    (invoiceId: string, input: api.PayInvoiceInput) =>
+      run(
+        `pay:${invoiceId}`,
+        () => api.payInvoice(getAuthHeaders, invoiceId, input),
+        result => `Payment recorded (${result.receiptNumber}).`,
+        ['invoices', 'billingStats', 'stats'],
+      ),
+    [getAuthHeaders, run],
+  );
+
+  const updateClaim = useCallback(
+    (claimId: string, input: api.AdjudicateClaimInput) =>
+      run(
+        `claim:${claimId}`,
+        () => api.adjudicateClaim(getAuthHeaders, claimId, input),
+        () => `Claim updated to ${input.status}.`,
+        ['claims', 'invoices', 'billingStats', 'stats'],
+      ),
+    [getAuthHeaders, run],
+  );
+
+  const fulfillExport = useCallback(
+    (patientId: string, justification: string) =>
+      run(
+        `export:${patientId}`,
+        () => api.requestPatientExport(getAuthHeaders, patientId, justification),
+        () => 'Subject data export generated.',
+        ['stats'],
+      ),
+    [getAuthHeaders, run],
+  );
+
+  const fulfillErasure = useCallback(
+    (patientId: string, reason: string) =>
+      run(
+        `erasure:${patientId}`,
+        () => api.executePatientErasure(getAuthHeaders, patientId, reason),
+        () => 'Right-to-erasure crypto-shred executed.',
+        ['erasureRequests', 'users', 'stats'],
+      ),
+    [getAuthHeaders, run],
+  );
+
   // Memoised so a memo'd panel that receives this object is not re-rendered by
   // every unrelated parent state change (the toast, the active tab, a keystroke).
   return useMemo(
@@ -248,6 +307,11 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
       closeViolation,
       escalateAlert,
       dispatchSms,
+      actionBooking,
+      settleInvoice,
+      updateClaim,
+      fulfillExport,
+      fulfillErasure,
     }),
     [
       pending,
@@ -262,6 +326,11 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
       closeViolation,
       escalateAlert,
       dispatchSms,
+      actionBooking,
+      settleInvoice,
+      updateClaim,
+      fulfillExport,
+      fulfillErasure,
     ],
   );
 }

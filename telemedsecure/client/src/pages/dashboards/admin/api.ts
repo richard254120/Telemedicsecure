@@ -18,6 +18,7 @@ import {
   get,
   put,
   post,
+  patch,
   del,
   type HeadersFactory,
 } from '../../../dashboard-shell/transport';
@@ -27,8 +28,13 @@ export { AUTH_EXPIRED_EVENT, ApiError, errorMessage, isAbortError };
 export type { HeadersFactory };
 import type {
   AdminUser,
+  AdminConsultation,
+  AdminClaim,
+  AdminInvoice,
+  BillingStats,
   ChainVerificationReport,
   ComplianceViolation,
+  ErasureRequestEntry,
   Incident,
   SecurityAlert,
   SmsLog,
@@ -78,6 +84,26 @@ export const readSmsStatus = async (s?: AbortSignal): Promise<SmsStatus> => {
   if (!res.ok) throw new ApiError(res.status, 'Could not read the SMS gateway status');
   return res.json();
 };
+
+/** GET /consultations — an ADMIN is returned every consultation platform-wide. */
+export const readConsultations = (h: HeadersFactory, s?: AbortSignal) =>
+  get<AdminConsultation[]>(h, '/consultations', 'Could not load the consultation ledger', s);
+
+/** GET /billing/stats — revenue-cycle aggregates. */
+export const readBillingStats = (h: HeadersFactory, s?: AbortSignal) =>
+  get<BillingStats>(h, '/billing/stats', 'Could not load the billing statistics', s);
+
+/** GET /billing/invoices — the full invoice ledger. */
+export const readInvoices = (h: HeadersFactory, s?: AbortSignal) =>
+  get<AdminInvoice[]>(h, '/billing/invoices', 'Could not load the invoice ledger', s);
+
+/** GET /billing/claims — the insurance-claim ledger. */
+export const readClaims = (h: HeadersFactory, s?: AbortSignal) =>
+  get<AdminClaim[]>(h, '/billing/claims', 'Could not load the claims ledger', s);
+
+/** GET /gdpr/erasure/requests — logged Art. 17 crypto-shreds. */
+export const readErasureRequests = (h: HeadersFactory, s?: AbortSignal) =>
+  get<ErasureRequestEntry[]>(h, '/gdpr/erasure/requests', 'Could not load the erasure registry', s);
 
 /* ------------------------------------------------------------------ *
  * Mutations
@@ -164,3 +190,52 @@ export const sendTestSms = (h: HeadersFactory, to: string, message: string) =>
   post<{ message: string; log?: { status: string } }>(
     h, '/sms/send', { to, message, purpose: 'GENERAL' }, 'SMS dispatch failed',
   );
+
+/* ------------------------------------------------------------------ *
+ * Consultation oversight — an admin may action any booking through the
+ * same lifecycle endpoints the clinicians use (the server authorises the
+ * ADMIN role inside each handler).
+ * ------------------------------------------------------------------ */
+
+export type BookingAction = 'accept' | 'decline' | 'reschedule' | 'cancel';
+
+export const actionBooking = (
+  h: HeadersFactory,
+  consultationId: string,
+  action: BookingAction,
+  body: Record<string, unknown> = {},
+) =>
+  patch<AdminConsultation>(h, `/consultations/${consultationId}/${action}`, body, `Could not ${action} this booking`);
+
+/* ------------------------------------------------------------------ *
+ * Finance — settle an invoice and adjudicate an insurance claim.
+ * ------------------------------------------------------------------ */
+
+export interface PayInvoiceInput {
+  paymentMethod?: string;
+  amountPaid?: number;
+  transactionReference?: string;
+}
+
+export const payInvoice = (h: HeadersFactory, invoiceId: string, input: PayInvoiceInput) =>
+  post<{ message: string; receiptNumber: string }>(h, `/billing/invoices/${invoiceId}/pay`, input, 'Could not record the payment');
+
+export interface AdjudicateClaimInput {
+  status: string;
+  approvedAmount?: number;
+  denialReason?: string;
+  appealNotes?: string;
+}
+
+export const adjudicateClaim = (h: HeadersFactory, claimId: string, input: AdjudicateClaimInput) =>
+  put<{ message: string }>(h, `/billing/claims/${claimId}/status`, input, 'Could not update the claim');
+
+/* ------------------------------------------------------------------ *
+ * Privacy / DSAR — fulfil an access export or a right-to-erasure shred.
+ * ------------------------------------------------------------------ */
+
+export const requestPatientExport = (h: HeadersFactory, patientId: string, justification: string) =>
+  post<Record<string, unknown>>(h, '/gdpr/export', { patientId, justification }, 'Could not generate the data export');
+
+export const executePatientErasure = (h: HeadersFactory, patientId: string, reason: string) =>
+  post<Record<string, unknown>>(h, '/gdpr/erasure', { patientId, reason, confirmShred: true }, 'Could not execute the erasure');

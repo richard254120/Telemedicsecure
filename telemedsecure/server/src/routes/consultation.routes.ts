@@ -7,6 +7,7 @@ import { gdprService } from '../services/gdpr.service';
 import { createChainedAuditEvent } from '../services/audit.service';
 import { getAccessiblePatientIds, canViewPatient } from '../services/panelAccess.service';
 import { notify } from '../services/notification.service';
+import { broadcastAdminOps } from '../socket';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -209,6 +210,7 @@ router.post('/book', requireRole([Role.PATIENT, Role.DOCTOR]), async (req, res) 
     });
 
     res.status(201).json(consultation);
+    broadcastAdminOps('booking.created', { consultationId: consultation.id });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to book consultation', details: err.message });
   }
@@ -285,6 +287,7 @@ router.post('/', requireRole([Role.DOCTOR, Role.ADMIN, Role.RECEPTIONIST, Role.C
   });
 
   res.status(201).json(consultation);
+  broadcastAdminOps('booking.created', { consultationId: consultation.id });
 });
 
 router.put('/:id/notes', requireRole([Role.DOCTOR]), async (req, res) => {
@@ -456,6 +459,7 @@ router.patch('/:id/accept', requireRole(CLINICIAN_MANAGER_ROLES), async (req, re
     });
 
     res.json(updated);
+    broadcastAdminOps('booking.updated', { consultationId: id, status: 'CONFIRMED' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to accept booking', details: err.message });
   }
@@ -501,6 +505,7 @@ router.patch('/:id/decline', requireRole(CLINICIAN_MANAGER_ROLES), async (req, r
     });
 
     res.json(updated);
+    broadcastAdminOps('booking.updated', { consultationId: id, status: 'DECLINED' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to decline booking', details: err.message });
   }
@@ -576,6 +581,7 @@ router.patch('/:id/reschedule', requireRole(CLINICIAN_MANAGER_ROLES), async (req
     }
 
     res.json(updated);
+    broadcastAdminOps('booking.updated', { consultationId: id, status: 'RESCHEDULED' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to reschedule booking', details: err.message });
   }
@@ -639,6 +645,7 @@ router.patch('/:id/cancel', async (req, res) => {
     });
 
     res.json(updated);
+    broadcastAdminOps('booking.updated', { consultationId: id, status: 'CANCELLED' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to cancel booking', details: err.message });
   }

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient, Role, InvoiceStatus, ClaimStatus } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import { createChainedAuditEvent } from '../services/audit.service';
+import { broadcastAdminOps } from '../socket';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -512,6 +513,7 @@ router.post('/invoices/:id/pay', async (req: Request, res: Response) => {
       payment,
       receiptNumber: `RCP-${txRef.slice(-8)}`
     });
+    broadcastAdminOps('billing.payment', { invoiceId });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to process payment', details: err.message });
   }
@@ -614,6 +616,7 @@ router.put('/claims/:id/status', requireRole([Role.BILLING_OFFICER, Role.ADMIN])
       message: `Claim status updated to ${status}`,
       claim: updated
     });
+    broadcastAdminOps('billing.claim', { claimId, status });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update claim status', details: err.message });
   }

@@ -3,6 +3,7 @@ import { PrismaClient, Role } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import { gdprService, DEFAULT_CONSENT_PURPOSES } from '../services/gdpr.service';
 import { rulesEngine } from '../services/rulesEngine.service';
+import { broadcastAdminOps } from '../socket';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -132,6 +133,7 @@ router.post('/export', async (req: Request, res: Response) => {
     });
 
     res.json(exportResult);
+    broadcastAdminOps('gdpr.export', { patientId: targetPatientId, requestedBy: user.id });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -165,6 +167,7 @@ router.post('/erasure', async (req: Request, res: Response) => {
     });
 
     res.json(result);
+    broadcastAdminOps('gdpr.erasure', { patientId: targetPatientId });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

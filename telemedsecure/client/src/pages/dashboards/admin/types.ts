@@ -235,6 +235,139 @@ export interface SystemStats {
   };
 }
 
+/**
+ * Consultation row as returned by GET /consultations (an ADMIN receives every
+ * consultation platform-wide, joined to its patient, doctor, clinical flags and
+ * vital-sign pointers). Only the fields the oversight panel renders are typed;
+ * the lifecycle columns mirror the booking model added server-side.
+ */
+export interface AdminConsultation {
+  id: string;
+  patientId: string;
+  doctorId: string;
+  /** SCHEDULED | PENDING | CONFIRMED | IN_PROGRESS | COMPLETED | CANCELLED | DECLINED */
+  status: string;
+  scheduledAt: string;
+  startedAt: string | null;
+  endedAt: string | null;
+  confirmedAt?: string | null;
+  declineReason?: string | null;
+  rescheduledFrom?: string | null;
+  rescheduledAt?: string | null;
+  cancelReason?: string | null;
+  cancelledAt?: string | null;
+  createdAt: string;
+  patient?: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  doctor?: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  clinicalFlags?: { id: string; severity?: string | null; description?: string | null; resolved?: boolean }[];
+  vitalSigns?: { id: string; createdAt: string }[];
+}
+
+/** GET /billing/stats — revenue-cycle aggregates for the finance panel. */
+export interface BillingStats {
+  summary: {
+    totalInvoices: number;
+    totalBilled: number;
+    totalCollected: number;
+    totalPatientDue: number;
+    totalInsuranceCovered: number;
+    pendingInvoicesCount: number;
+    paidInvoicesCount: number;
+  };
+  claimsMetrics: {
+    totalClaims: number;
+    submittedClaims: number;
+    approvedClaims: number;
+    deniedClaims: number;
+    cleanClaimRate: string;
+  };
+  arAging: {
+    current: number;
+    days31to60: number;
+    days61to90: number;
+    over90Days: number;
+  };
+}
+
+export interface InvoiceItemRow {
+  id: string;
+  serviceType: string;
+  cptCode?: string | null;
+  description: string;
+  quantity: number;
+  unitPrice: number;
+  totalPrice: number;
+}
+
+export interface InvoicePaymentRow {
+  id: string;
+  amount: number;
+  method: string;
+  status: string;
+  transactionRef: string;
+}
+
+/** GET /billing/invoices — an ADMIN sees every invoice, fully joined. */
+export interface AdminInvoice {
+  id: string;
+  invoiceNumber: string;
+  patientId: string;
+  consultationId?: string | null;
+  totalAmount: number;
+  insuranceCovered: number;
+  patientDue: number;
+  /** PENDING | PARTIALLY_PAID | PAID | CANCELLED | REFUNDED */
+  status: string;
+  dueDate: string;
+  paidAt?: string | null;
+  createdAt: string;
+  patient?: { id: string; firstName: string | null; lastName: string | null; email: string | null; phone?: string | null } | null;
+  consultation?: { id: string; scheduledAt: string; status: string; doctor?: { firstName: string | null; lastName: string | null; specialty?: string | null } | null } | null;
+  items?: InvoiceItemRow[];
+  claims?: { id: string; claimNumber: string; status: string; billedAmount: number; approvedAmount?: number | null }[];
+  payments?: InvoicePaymentRow[];
+}
+
+/** GET /billing/claims — insurance claim ledger with the payer + invoice joined. */
+export interface AdminClaim {
+  id: string;
+  claimNumber: string;
+  invoiceId: string;
+  patientId: string;
+  payerName: string;
+  policyNumber: string;
+  groupNumber?: string | null;
+  billedAmount: number;
+  approvedAmount?: number | null;
+  copayAmount: number;
+  deductibleAmount: number;
+  /** DRAFT | SCRUBBED | SUBMITTED | IN_REVIEW | APPROVED | DENIED | APPEALED | SETTLED */
+  status: string;
+  denialReason?: string | null;
+  appealNotes?: string | null;
+  submittedAt?: string | null;
+  adjudicatedAt?: string | null;
+  createdAt: string;
+  patient?: { id: string; firstName: string | null; lastName: string | null; email: string | null } | null;
+  invoice?: { invoiceNumber: string; totalAmount: number; status: string } | null;
+}
+
+/**
+ * GET /gdpr/erasure/requests — a logged Art. 17 crypto-shred. The server returns
+ * the raw rows (no patient join), so the panel resolves the subject name from the
+ * workforce roster it already holds.
+ */
+export interface ErasureRequestEntry {
+  id: string;
+  userId: string;
+  reason?: string | null;
+  status: string;
+  shreddedAt: string;
+  recordsShredded: number;
+  notesShredded: number;
+  vitalsShredded: number;
+}
+
 /** Roles that may be provisioned / invited through the admin console. */
 export const PROVISIONABLE_ROLES: { value: UserRole; label: string }[] = [
   { value: 'DOCTOR', label: 'Physician (Attending)' },

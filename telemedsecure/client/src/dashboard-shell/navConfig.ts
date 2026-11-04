@@ -20,6 +20,7 @@ import {
   FlaskConical,
   HeartPulse,
   LayoutDashboard,
+  Lock,
   Pill,
   PlusCircle,
   Scan,
@@ -43,10 +44,13 @@ export type AdminSectionId =
   | 'prescriptions'
   | 'users'
   | 'patients'
+  | 'consultations'
+  | 'finance'
+  | 'privacy'
   | 'sms';
 
 const ADMIN_SECTIONS: AdminSectionId[] = [
-  'overview', 'compliance', 'investigation', 'prescriptions', 'users', 'patients', 'sms',
+  'overview', 'compliance', 'investigation', 'prescriptions', 'users', 'patients', 'consultations', 'finance', 'privacy', 'sms',
 ];
 
 export function isAdminSectionId(value: string | null | undefined): value is AdminSectionId {
@@ -61,12 +65,15 @@ const ADMIN_NAV: NavGroup[] = [
     { id: 'compliance', label: 'Compliance & Alerts', caption: 'Violations, audit chain', group: 'Integrity', icon: ShieldCheck },
     { id: 'investigation', label: 'Incident Casework', caption: 'Open forensic probes', group: 'Integrity', icon: FileSearch },
     { id: 'prescriptions', label: 'EPCS Audit', caption: 'Rx signature ledger', group: 'Integrity', icon: FileCheck2 },
+    { id: 'privacy', label: 'Privacy & DSAR', caption: 'Exports, right to erasure', group: 'Integrity', icon: Lock },
   ] },
   { name: 'Identity', tabs: [
     { id: 'users', label: 'Workforce & RBAC', caption: 'Staff, roles, provisioning', group: 'Identity', icon: Users },
     { id: 'patients', label: 'Patient Registry', caption: 'Enrollment & account state', group: 'Identity', icon: User },
   ] },
   { name: 'Operations', tabs: [
+    { id: 'consultations', label: 'Consultation Oversight', caption: 'Bookings across all clinicians', group: 'Operations', icon: Calendar },
+    { id: 'finance', label: 'Finance & Revenue', caption: 'Invoices, claims, aging', group: 'Operations', icon: CreditCard },
     { id: 'sms', label: 'SMS Gateway', caption: 'Dispatch ledger', group: 'Operations', icon: Smartphone },
   ] },
 ];

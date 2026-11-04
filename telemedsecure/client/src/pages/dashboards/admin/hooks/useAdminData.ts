@@ -31,7 +31,12 @@ export type ResourceKey =
   | 'incidents'
   | 'invitations'
   | 'smsLogs'
-  | 'smsStatus';
+  | 'smsStatus'
+  | 'consultations'
+  | 'billingStats'
+  | 'invoices'
+  | 'claims'
+  | 'erasureRequests';
 
 const READERS: Record<ResourceKey, Reader> = {
   stats: (h, s) => api.readSystemStats(h, s),
@@ -44,6 +49,11 @@ const READERS: Record<ResourceKey, Reader> = {
   invitations: (h, s) => api.readInvitations(h, s),
   smsLogs: (h, s) => api.readSmsLogs(h, s),
   smsStatus: (_h, s) => api.readSmsStatus(s),
+  consultations: (h, s) => api.readConsultations(h, s),
+  billingStats: (h, s) => api.readBillingStats(h, s),
+  invoices: (h, s) => api.readInvoices(h, s),
+  claims: (h, s) => api.readClaims(h, s),
+  erasureRequests: (h, s) => api.readErasureRequests(h, s),
 };
 
 const KEYS = Object.keys(READERS) as ResourceKey[];
