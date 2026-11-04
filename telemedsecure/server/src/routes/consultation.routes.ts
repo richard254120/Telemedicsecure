@@ -5,6 +5,7 @@ import { encryptDataEnvelope, decryptDataEnvelope } from '../utils/crypto';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { gdprService } from '../services/gdpr.service';
 import { createChainedAuditEvent } from '../services/audit.service';
+import { getAccessiblePatientIds } from '../services/panelAccess.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -18,8 +19,12 @@ router.get('/', async (req, res) => {
     whereClause = { patientId: user.id };
   } else if (user.role === Role.DOCTOR) {
     whereClause = { doctorId: user.id };
+  } else if (user.role === Role.NURSE) {
+    // Nurses see only their assigned care-team patients.
+    const accessible = await getAccessiblePatientIds(user);
+    if (accessible !== null) whereClause = { patientId: { in: accessible } };
   }
-  // NURSE and ADMIN see all consultations
+  // ADMIN and other staff see all
 
   const consultations = await prisma.consultation.findMany({
     where: whereClause,
@@ -37,8 +42,16 @@ router.get('/', async (req, res) => {
 // Patients directory for clinical staff and administration (Doctor, Nurse, Admin, Receptionist, Care Coordinator, Triage)
 router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.RECEPTIONIST, Role.CARE_COORDINATOR, Role.TRIAGE_OFFICER, Role.RADIOLOGIST, Role.LAB_TECHNICIAN, Role.PHARMACIST, Role.BILLING_OFFICER]), async (req, res) => {
   try {
+    const user = (req as any).user;
+    const where: any = { role: Role.PATIENT };
+    // Doctors and nurses only see the patients on their own panel; station
+    // roles and admins keep the full directory so scheduling does not regress.
+    if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
+      const accessible = await getAccessiblePatientIds(user);
+      if (accessible !== null) where.id = { in: accessible };
+    }
     const patients = await prisma.user.findMany({
-      where: { role: Role.PATIENT },
+      where,
       select: {
         id: true,
         firstName: true,

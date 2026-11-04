@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient, Role } from '@prisma/client';
 import { requireAuth, requireRole } from '../middlewares/auth';
 import { encryptDataEnvelope, decryptDataEnvelope } from '../utils/crypto';
+import { getAccessiblePatientIds } from '../services/panelAccess.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -191,6 +192,10 @@ router.get('/clinical-flags/all', async (req, res) => {
       whereClause = { patientId: user.id };
     } else if (user.role === Role.ADMIN) {
       return res.status(403).json({ error: 'Admins cannot view clinical content' });
+    } else if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
+      // Clinicians only see flags raised for patients on their own panel.
+      const accessible = await getAccessiblePatientIds(user);
+      if (accessible !== null) whereClause = { patientId: { in: accessible } };
     }
 
     const flags = await prisma.clinicalFlag.findMany({

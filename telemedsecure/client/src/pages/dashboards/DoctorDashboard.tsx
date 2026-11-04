@@ -41,7 +41,8 @@ import {
   FlaskConical,
   Scan,
   ClipboardCheck,
-  FileCheck
+  FileCheck,
+  Users
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -49,8 +50,9 @@ import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import Shell from '../../dashboard-shell/Shell';
 import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
-import { Button } from '../../dashboard-shell/ui';
-import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import { Button, Panel, Badge, Field, EmptyState, INPUT_CLASS } from '../../dashboard-shell/ui';
+import { handoffTone } from '../../dashboard-shell/handoff';
+import { get as apiGet, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
 
 export interface PatientSummary {
@@ -80,7 +82,7 @@ export default function DoctorDashboard() {
   const { user, getAuthHeaders, logout } = useAuth();
 
   // Navigation tab
-  const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics'>('patient-hub');
+  const [activeTab, setActiveTab] = useState<'patient-hub' | 'schedule' | 'eprescribe' | 'vitals' | 'records' | 'diagnostics' | 'shared'>('patient-hub');
 
   // Main clinical data
   const [patients, setPatients] = useState<PatientSummary[]>([]);
@@ -192,6 +194,12 @@ export default function DoctorDashboard() {
   const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+
+  // Shared-with-me access grants, key redemption, and per-patient care team
+  const [sharedGrants, setSharedGrants] = useState<any[]>([]);
+  const [redeemCode, setRedeemCode] = useState('');
+  const [redeemBusy, setRedeemBusy] = useState(false);
+  const [careTeam, setCareTeam] = useState<any[]>([]);
 
   // Real-Time Patient Chat Notifications State
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -322,14 +330,15 @@ export default function DoctorDashboard() {
     setLoading(true);
     setActionError(null);
     try {
-      const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes] = await Promise.all([
+      const [ptsRes, consRes, rxRes, flagsRes, recsRes, labRes, radRes, sharedRes] = await Promise.all([
         apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients'),
         apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
         apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions'),
         apiGet<any[]>(getAuthHeaders, '/vital-signs/clinical-flags/all', 'Failed to load clinical flags'),
         apiGet<any[]>(getAuthHeaders, '/medical-records', 'Failed to load medical records'),
         apiGet<any[]>(getAuthHeaders, '/stations/lab/orders', 'Failed to load lab orders').catch(() => []),
-        apiGet<any[]>(getAuthHeaders, '/stations/radiology/studies', 'Failed to load radiology studies').catch(() => [])
+        apiGet<any[]>(getAuthHeaders, '/stations/radiology/studies', 'Failed to load radiology studies').catch(() => []),
+        apiGet<any[]>(getAuthHeaders, '/access/shared-with-me', 'Failed to load shared grants').catch(() => [])
       ]);
 
       const pts = Array.isArray(ptsRes) ? ptsRes : [];
@@ -340,6 +349,7 @@ export default function DoctorDashboard() {
       setMedicalRecords(Array.isArray(recsRes) ? recsRes : []);
       setLabOrders(Array.isArray(labRes) ? labRes : []);
       setRadiologyOrders(Array.isArray(radRes) ? radRes : []);
+      setSharedGrants(Array.isArray(sharedRes) ? sharedRes : []);
 
       // Auto-select first patient if none selected
       if (!selectedPatientId && pts.length > 0) {
@@ -351,6 +361,37 @@ export default function DoctorDashboard() {
     } finally {
       setLastSyncedAt(Date.now());
       setLoading(false);
+    }
+  };
+
+  const fetchCareTeam = async (patientId: string) => {
+    if (!patientId) return;
+    try {
+      const teamRes = await apiGet<{ members: any[] }>(getAuthHeaders, `/care-team/team/${patientId}`, 'Failed to load care team');
+      setCareTeam(Array.isArray(teamRes?.members) ? teamRes.members : []);
+    } catch (e) {
+      console.error('Failed to load care team', e);
+      setCareTeam([]);
+    }
+  };
+
+  const handleRedeemKey = async () => {
+    if (!redeemCode.trim()) {
+      setActionError('Enter the access code shared with you by the patient.');
+      return;
+    }
+    setRedeemBusy(true);
+    setActionError(null);
+    setActionSuccess(null);
+    try {
+      const data = await apiPost<{ patient: any }>(getAuthHeaders, '/access/redeem', { code: redeemCode }, 'Failed to redeem access key');
+      setActionSuccess(`Access granted to ${data.patient?.firstName ?? 'patient'} for this window.`);
+      setRedeemCode('');
+      fetchDoctorData();
+    } catch (e) {
+      setActionError(errorMessage(e, 'Invalid or expired access key'));
+    } finally {
+      setRedeemBusy(false);
     }
   };
 
@@ -412,6 +453,12 @@ export default function DoctorDashboard() {
 
   // Currently selected patient object
   const activePatient = patients.find(p => p.id === selectedPatientId) || patients[0] || null;
+
+  // Refresh the care-team panel whenever the working patient changes
+  useEffect(() => {
+    if (activePatient?.id) fetchCareTeam(activePatient.id);
+    else setCareTeam([]);
+  }, [activePatient?.id]);
 
   // Filtered patients for dropdown & search
   const filteredPatients = patients.filter(p => {
@@ -665,6 +712,7 @@ export default function DoctorDashboard() {
     { id: 'diagnostics', label: 'Lab & Imaging Requisitions', caption: 'Orders & results', group: 'Physician Station', icon: FlaskConical },
     { id: 'vitals', label: 'Telemetry Vitals & Flags', caption: 'Clinical flags', group: 'Physician Station', icon: HeartPulse },
     { id: 'records', label: 'Diagnostic Records', caption: 'SOAP & notes', group: 'Physician Station', icon: FileText },
+    { id: 'shared', label: 'Shared With Me', caption: 'Temporary patient access', group: 'Physician Station', icon: KeyRound },
   ];
   const nav: NavGroup[] = buildStationNav('DOCTOR', doctorTabs);
   const counts: Record<string, CountChip> = {
@@ -674,6 +722,7 @@ export default function DoctorDashboard() {
     diagnostics: { value: labOrders.length + radiologyOrders.length, status: 'success' },
     vitals: { value: clinicalFlags.length, status: 'success' },
     records: { value: medicalRecords.length, status: 'success' },
+    shared: { value: sharedGrants.filter(g => g.effectiveStatus === 'ACTIVE' && g.redeemed).length, status: 'success' },
   };
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const headerActions = (
@@ -1513,6 +1562,91 @@ export default function DoctorDashboard() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Tab: Shared With Me (patient-issued access keys) + Care Team */}
+        {activeTab === 'shared' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                <KeyRound className="w-5 h-5 text-blue-400" />
+                <span>Shared With Me & Care Team</span>
+              </h2>
+              <p className="text-xs text-slate-400">Redeem a patient-issued key to unlock their chart for a limited window, and review the care team around your active patient.</p>
+            </div>
+
+            <Panel title="Enter Access Key" icon={KeyRound} description="Paste the one-time code a patient shared with you. Access is bound to you and expires automatically.">
+              <div className="flex flex-col sm:flex-row items-end gap-3">
+                <Field label="Access code" className="flex-1">
+                  <input
+                    value={redeemCode}
+                    onChange={(e) => setRedeemCode(e.target.value)}
+                    placeholder="XXXX-XXXX-XXXX"
+                    className={`${INPUT_CLASS} font-mono uppercase`}
+                  />
+                </Field>
+                <Button variant="primary" icon={ShieldCheck} onClick={handleRedeemKey} busy={redeemBusy} disabled={!redeemCode.trim()}>Redeem Access</Button>
+              </div>
+            </Panel>
+
+            <Panel title="Temporary Access Grants" icon={Users} description="Every key issued to you by patients.">
+              {sharedGrants.length === 0 ? (
+                <EmptyState icon={KeyRound} title="No patients have shared access with you" description="Redeemed and pending keys will appear here with a live expiry." />
+              ) : (
+                <div className="grid gap-2">
+                  {sharedGrants.map((g) => {
+                    const expired = new Date(g.expiresAt).getTime() <= Date.now();
+                    const state = g.effectiveStatus === 'REVOKED' ? 'REVOKED' : expired ? 'EXPIRED' : g.redeemed ? 'ACTIVE' : 'AWAITING_KEY';
+                    const tone = g.effectiveStatus === 'REVOKED' ? 'danger' : expired ? 'neutral' : g.redeemed ? handoffTone('ACTIVE') : 'warning';
+                    return (
+                      <div key={g.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">{g.patient?.firstName} {g.patient?.lastName}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {g.purpose ? `${g.purpose} · ` : ''}{g.redeemed ? `Unlocks until ${new Date(g.expiresAt).toLocaleString()}` : `Issued ${new Date(g.createdAt).toLocaleDateString()} · expires ${new Date(g.expiresAt).toLocaleString()}`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge tone={tone as any}>{state}</Badge>
+                          {g.redeemed && !expired && (
+                            <Button variant="ghost" icon={MessageSquare} onClick={() => { setSelectedPatientId(g.patient?.id); setShowChatDrawer(true); }}>Open Chat</Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            <Panel
+              title={activePatient ? `Care Team — ${activePatient.firstName} ${activePatient.lastName}` : 'Care Team'}
+              icon={Stethoscope}
+              description="Clinicians assigned to the active patient."
+              actions={activePatient ? <Button variant="ghost" icon={MessageSquare} onClick={() => setShowChatDrawer(true)}>Care Chat</Button> : undefined}
+            >
+              {careTeam.length === 0 ? (
+                <EmptyState icon={Users} title="No care team members" description="This patient has no additional care-team members yet." />
+              ) : (
+                <div className="grid gap-2">
+                  {careTeam.map((m) => (
+                    <div key={m.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2.5">
+                      <div className="flex items-center space-x-3">
+                        <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${m.role === 'NURSE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-blue-500/15 text-blue-300'}`}>
+                          {m.role === 'NURSE' ? <HeartPulse className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                        </span>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{m.clinician?.firstName} {m.clinician?.lastName}</p>
+                          <p className="text-[11px] text-slate-400">{m.clinician?.email} · {m.role}</p>
+                        </div>
+                      </div>
+                      <Badge tone={m.role === 'NURSE' ? 'success' : 'info'}>{m.source}</Badge>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Panel>
           </div>
         )}
 

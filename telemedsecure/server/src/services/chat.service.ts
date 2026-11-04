@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Role, CareTeamStatus } from '@prisma/client';
 import { createChainedAuditEvent } from './audit.service';
 import { getIO } from '../socket';
 
@@ -32,9 +32,80 @@ export interface ClinicalChatNotification {
   read: boolean;
 }
 
-// In-memory channel store with persistence across calls and audit anchoring
-const channelMessagesStore = new Map<string, ClinicalChatMessage[]>();
+const SYSTEM_WELCOME =
+  'Encrypted Attending Care Team channel established. Protected under HIPAA §164.312 with per-session envelope encryption.';
+
+// Notifications are ephemeral real-time state; messages are persisted in the DB.
 const userNotificationsStore = new Map<string, ClinicalChatNotification[]>();
+
+const formatTimestamp = (d: Date): string =>
+  d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+function rowToMessage(m: {
+  id: string; channelId: string; senderId: string; senderName: string;
+  senderRole: string; body: string; encrypted: boolean; createdAt: Date;
+}): ClinicalChatMessage {
+  return {
+    id: m.id,
+    channelId: m.channelId,
+    senderId: m.senderId,
+    senderName: m.senderName,
+    senderRole: m.senderRole,
+    text: m.body,
+    timestamp: formatTimestamp(m.createdAt),
+    encrypted: m.encrypted,
+  };
+}
+
+/**
+ * Resolve the patient a channel belongs to (care-team or consultation channel).
+ * Returns null for non-patient-scoped (e.g. station) channels.
+ */
+async function resolveChannelPatientId(channelId: string): Promise<string | null> {
+  if (channelId.startsWith('care-team-patient-')) {
+    return channelId.replace('care-team-patient-', '');
+  }
+  if (channelId.startsWith('consultation-')) {
+    const consultId = channelId.replace('consultation-', '');
+    const consult = await prisma.consultation.findUnique({
+      where: { id: consultId },
+      select: { patientId: true },
+    });
+    return consult?.patientId ?? null;
+  }
+  return null;
+}
+
+/**
+ * Channel access control. Station / general channels are unrestricted for
+ * signed-in staff, but patient-scoped care-team and consultation channels are
+ * limited to the patient, admins, the assigned doctor, and active team members.
+ */
+export async function canAccessChannel(user: any, channelId: string): Promise<boolean> {
+  if (!user) return false;
+  if (!channelId.startsWith('care-team-patient-') && !channelId.startsWith('consultation-')) {
+    return true; // non patient-scoped channel
+  }
+  if (user.role === Role.ADMIN) return true;
+
+  const patientId = await resolveChannelPatientId(channelId);
+  if (!patientId) return false;
+  if (user.role === Role.PATIENT) return user.id === patientId;
+
+  // Active care-team membership?
+  const membership = await prisma.careTeamMembership.findFirst({
+    where: { patientId, clinicianId: user.id, status: CareTeamStatus.ACTIVE },
+    select: { id: true },
+  });
+  if (membership) return true;
+
+  // Assigned doctor via consultation?
+  const consult = await prisma.consultation.findFirst({
+    where: { patientId, doctorId: user.id },
+    select: { id: true },
+  });
+  return Boolean(consult);
+}
 
 export class ChatService {
   /**
@@ -68,29 +139,34 @@ export class ChatService {
   }
 
   /**
-   * Get all messages in a clinical channel
+   * Get all persisted messages in a clinical channel. Seeds the system welcome
+   * notice on first read of an empty channel.
    */
-  getChannelMessages(channelId: string): ClinicalChatMessage[] {
-    if (!channelMessagesStore.has(channelId)) {
-      // Seed default HIPAA compliance channel notice
-      channelMessagesStore.set(channelId, [
-        {
-          id: `sys-${channelId}-init`,
+  async getChannelMessages(channelId: string): Promise<ClinicalChatMessage[]> {
+    const rows = await prisma.chatMessage.findMany({
+      where: { channelId },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    if (rows.length === 0) {
+      const sys = await prisma.chatMessage.create({
+        data: {
           channelId,
           senderId: 'system',
           senderName: 'TeleMedSecure E2EE Engine',
           senderRole: 'SYSTEM',
-          text: 'Encrypted Attending Care Team channel established. Protected under HIPAA §164.312 with per-session envelope encryption.',
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          body: SYSTEM_WELCOME,
           encrypted: true,
         },
-      ]);
+      });
+      return [rowToMessage(sys)];
     }
-    return channelMessagesStore.get(channelId) || [];
+
+    return rows.map(rowToMessage);
   }
 
   /**
-   * Post a new message to a clinical channel
+   * Post a new message to a clinical channel (persisted) and fan it out.
    */
   async postMessage(
     channelId: string,
@@ -104,23 +180,17 @@ export class ChatService {
     },
     ipAddress?: string
   ): Promise<ClinicalChatMessage> {
-    const messages = this.getChannelMessages(channelId);
-
-    const newMsg: ClinicalChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      channelId,
-      senderId: message.senderId,
-      senderName: message.senderName,
-      senderRole: message.senderRole,
-      text: message.text,
-      ciphertext: message.ciphertext || message.text,
-      iv: message.iv || 'aes-gcm-standard-iv',
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      encrypted: true,
-    };
-
-    messages.push(newMsg);
-    channelMessagesStore.set(channelId, messages);
+    const row = await prisma.chatMessage.create({
+      data: {
+        channelId,
+        senderId: message.senderId,
+        senderName: message.senderName,
+        senderRole: message.senderRole,
+        body: message.text,
+        encrypted: true,
+      },
+    });
+    const newMsg = rowToMessage(row);
 
     // Audit Log state change
     try {
@@ -142,13 +212,38 @@ export class ChatService {
 
     // Real-time notification dispatch
     if (message.senderRole === 'PATIENT') {
-      this.dispatchDoctorChatNotification(channelId, newMsg).catch(console.error);
+      this.dispatchTeamChatNotification(channelId, newMsg).catch(console.error);
       this.triggerCareTeamTriageResponse(channelId, message.text, message.senderName).catch(console.error);
-    } else if (message.senderRole === 'DOCTOR') {
+    } else if (message.senderRole === 'DOCTOR' || message.senderRole === 'NURSE') {
       this.dispatchPatientChatNotification(channelId, newMsg).catch(console.error);
     }
 
     return newMsg;
+  }
+
+  /**
+   * Persist + broadcast an assistant/system care-team reply.
+   */
+  private async appendChannelMessage(
+    channelId: string,
+    data: { senderId: string; senderName: string; senderRole: string; text: string }
+  ): Promise<ClinicalChatMessage> {
+    const row = await prisma.chatMessage.create({
+      data: {
+        channelId,
+        senderId: data.senderId,
+        senderName: data.senderName,
+        senderRole: data.senderRole,
+        body: data.text,
+        encrypted: true,
+      },
+    });
+    const msg = rowToMessage(row);
+    const io = getIO();
+    if (io) {
+      io.to(channelId).emit('chat-message', msg);
+    }
+    return msg;
   }
 
   /**
@@ -157,69 +252,41 @@ export class ChatService {
   private async triggerCareTeamTriageResponse(channelId: string, patientText: string, patientName: string) {
     const lower = patientText.toLowerCase();
 
-    // Dynamically query database for attending doctor, nurse, and pharmacist
     let doctorName = 'Attending Physician';
     let nurseName = 'On-Duty Triage Nurse';
     let pharmacistName = 'Clinical Pharmacist';
 
     try {
+      const patientId = await resolveChannelPatientId(channelId);
+
       let doctorUser: any = null;
-      let patientId: string | undefined;
-
-      if (channelId.startsWith('care-team-patient-')) {
-        patientId = channelId.replace('care-team-patient-', '');
-      } else if (channelId.startsWith('consultation-')) {
-        const consultId = channelId.replace('consultation-', '');
-        const consult = await prisma.consultation.findUnique({
-          where: { id: consultId },
-          include: { doctor: true }
-        });
-        if (consult?.doctor) {
-          doctorUser = consult.doctor;
-        }
-      }
-
-      // If we have a patient ID, find their active consultation or assigned doctor
-      if (patientId && !doctorUser) {
+      if (patientId) {
         const recentConsult = await prisma.consultation.findFirst({
           where: { patientId },
           orderBy: { scheduledAt: 'desc' },
-          include: { doctor: true }
+          include: { doctor: true },
         });
-        if (recentConsult?.doctor) {
-          doctorUser = recentConsult.doctor;
-        }
+        if (recentConsult?.doctor) doctorUser = recentConsult.doctor;
       }
-
-      // If still no specific doctor assigned, find active registered doctor from database
       if (!doctorUser) {
         doctorUser = await prisma.user.findFirst({
           where: { role: 'DOCTOR', isActive: true },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
         });
       }
 
-      // Query active registered nurse from database
       const nurseUser = await prisma.user.findFirst({
         where: { role: 'NURSE', isActive: true },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
-
-      // Query active registered pharmacist from database
       const pharmacistUser = await prisma.user.findFirst({
         where: { role: 'PHARMACIST', isActive: true },
-        orderBy: { createdAt: 'desc' }
+        orderBy: { createdAt: 'desc' },
       });
 
-      if (doctorUser) {
-        doctorName = `Dr. ${doctorUser.firstName} ${doctorUser.lastName}`;
-      }
-      if (nurseUser) {
-        nurseName = `Nurse ${nurseUser.firstName} ${nurseUser.lastName}`;
-      }
-      if (pharmacistUser) {
-        pharmacistName = `Pharmacist ${pharmacistUser.firstName} ${pharmacistUser.lastName}`;
-      }
+      if (doctorUser) doctorName = `Dr. ${doctorUser.firstName} ${doctorUser.lastName}`;
+      if (nurseUser) nurseName = `Nurse ${nurseUser.firstName} ${nurseUser.lastName}`;
+      if (pharmacistUser) pharmacistName = `Pharmacist ${pharmacistUser.firstName} ${pharmacistUser.lastName}`;
     } catch (err) {
       console.error('Error fetching clinical care team staff from DB for chat triage:', err);
     }
@@ -254,78 +321,55 @@ export class ChatService {
     }
 
     setTimeout(() => {
-      const messages = this.getChannelMessages(channelId);
-      const triageMsg: ClinicalChatMessage = {
-        id: `triage-${Date.now()}`,
-        channelId,
+      this.appendChannelMessage(channelId, {
         senderId: 'care-team-lead',
         senderName: authorName,
         senderRole: triageRole,
         text: replyText,
-        ciphertext: replyText,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        encrypted: true,
-      };
-
-      messages.push(triageMsg);
-      channelMessagesStore.set(channelId, messages);
-
-      const io = getIO();
-      if (io) {
-        io.to(channelId).emit('chat-message', triageMsg);
-      }
+      }).catch(console.error);
     }, 1200);
   }
 
   /**
-   * Directly routes incoming patient messages to the assigned doctor's private channel and notification queue
+   * Fan a patient message out to every ACTIVE care-team member (doctors + nurses)
+   * of the channel's patient, falling back to the assigned doctor.
    */
-  private async dispatchDoctorChatNotification(channelId: string, message: ClinicalChatMessage) {
+  private async dispatchTeamChatNotification(channelId: string, message: ClinicalChatMessage) {
     try {
-      let patientId: string | undefined;
-      if (channelId.startsWith('care-team-patient-')) {
-        patientId = channelId.replace('care-team-patient-', '');
-      } else if (channelId.startsWith('consultation-')) {
-        const consultId = channelId.replace('consultation-', '');
-        const consult = await prisma.consultation.findUnique({
-          where: { id: consultId },
-          select: { patientId: true, doctorId: true, doctor: true }
-        });
-        if (consult) {
-          patientId = consult.patientId;
-        }
-      }
+      const patientId = (await resolveChannelPatientId(channelId)) || message.senderId;
+      if (!patientId) return;
 
-      if (!patientId && message.senderId) {
-        patientId = message.senderId;
-      }
+      const members = await prisma.careTeamMembership.findMany({
+        where: { patientId, status: CareTeamStatus.ACTIVE },
+        select: { clinicianId: true },
+      });
+      let recipientIds = Array.from(new Set(members.map((m) => m.clinicianId)));
 
-      // Find the doctor assigned to this patient
-      let targetDoctor: any = null;
-      if (patientId) {
+      if (recipientIds.length === 0) {
+        // Fallback: assigned doctor (or any active doctor) so the thread is never dead.
         const consult = await prisma.consultation.findFirst({
           where: { patientId },
           orderBy: { scheduledAt: 'desc' },
-          include: { doctor: true }
+          select: { doctorId: true },
         });
-        if (consult?.doctor) {
-          targetDoctor = consult.doctor;
+        let doctorId = consult?.doctorId;
+        if (!doctorId) {
+          const doctor = await prisma.user.findFirst({
+            where: { role: 'DOCTOR', isActive: true },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true },
+          });
+          doctorId = doctor?.id;
         }
+        if (doctorId) recipientIds = [doctorId];
       }
 
-      // If patient does not have a past consultation, target the active doctor in system
-      if (!targetDoctor) {
-        targetDoctor = await prisma.user.findFirst({
-          where: { role: 'DOCTOR', isActive: true },
-          orderBy: { createdAt: 'desc' }
-        });
-      }
-
-      if (targetDoctor) {
+      const io = getIO();
+      for (const clinicianId of recipientIds) {
         const notification: ClinicalChatNotification = {
           id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
           type: 'NEW_CHAT_MESSAGE',
-          userId: targetDoctor.id,
+          userId: clinicianId,
           senderId: message.senderId,
           senderName: message.senderName,
           senderRole: message.senderRole,
@@ -337,60 +381,51 @@ export class ChatService {
           read: false,
         };
 
-        const list = userNotificationsStore.get(targetDoctor.id) || [];
+        const list = userNotificationsStore.get(clinicianId) || [];
         list.unshift(notification);
-        userNotificationsStore.set(targetDoctor.id, list.slice(0, 50));
+        userNotificationsStore.set(clinicianId, list.slice(0, 50));
 
-        const io = getIO();
         if (io) {
-          // Direct real-time alerts to that specific doctor
-          io.to(`user-${targetDoctor.id}`).emit('clinical-notification', notification);
-          io.to(`doctor-${targetDoctor.id}`).emit('clinical-notification', notification);
-          io.to(`user-${targetDoctor.id}`).emit('chat-message', message);
-          io.to(`doctor-${targetDoctor.id}`).emit('chat-message', message);
-          io.to('role-DOCTOR').emit('clinical-notification', notification);
+          io.to(`user-${clinicianId}`).emit('clinical-notification', notification);
+          io.to(`user-${clinicianId}`).emit('chat-message', message);
         }
       }
     } catch (err) {
-      console.error('Error dispatching doctor chat notification:', err);
+      console.error('Error dispatching team chat notification:', err);
     }
   }
 
   /**
-   * Directly routes incoming physician messages to the patient's private channel and notification queue
+   * Directly routes incoming clinician messages to the patient's notification queue
    */
   private async dispatchPatientChatNotification(channelId: string, message: ClinicalChatMessage) {
     try {
-      let patientId: string | undefined;
-      if (channelId.startsWith('care-team-patient-')) {
-        patientId = channelId.replace('care-team-patient-', '');
-      }
+      const patientId = await resolveChannelPatientId(channelId);
+      if (!patientId) return;
 
-      if (patientId) {
-        const notification: ClinicalChatNotification = {
-          id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          type: 'NEW_CHAT_MESSAGE',
-          userId: patientId,
-          senderId: message.senderId,
-          senderName: message.senderName,
-          senderRole: message.senderRole,
-          patientId,
-          patientName: 'Patient',
-          channelId,
-          text: message.text,
-          timestamp: message.timestamp,
-          read: false,
-        };
+      const notification: ClinicalChatNotification = {
+        id: `notif-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        type: 'NEW_CHAT_MESSAGE',
+        userId: patientId,
+        senderId: message.senderId,
+        senderName: message.senderName,
+        senderRole: message.senderRole,
+        patientId,
+        patientName: 'Patient',
+        channelId,
+        text: message.text,
+        timestamp: message.timestamp,
+        read: false,
+      };
 
-        const list = userNotificationsStore.get(patientId) || [];
-        list.unshift(notification);
-        userNotificationsStore.set(patientId, list.slice(0, 50));
+      const list = userNotificationsStore.get(patientId) || [];
+      list.unshift(notification);
+      userNotificationsStore.set(patientId, list.slice(0, 50));
 
-        const io = getIO();
-        if (io) {
-          io.to(`user-${patientId}`).emit('clinical-notification', notification);
-          io.to(`user-${patientId}`).emit('chat-message', message);
-        }
+      const io = getIO();
+      if (io) {
+        io.to(`user-${patientId}`).emit('clinical-notification', notification);
+        io.to(`user-${patientId}`).emit('chat-message', message);
       }
     } catch (err) {
       console.error('Error dispatching patient chat notification:', err);

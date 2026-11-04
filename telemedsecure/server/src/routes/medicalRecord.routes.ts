@@ -5,6 +5,7 @@ import { encryptDataEnvelope, decryptDataEnvelope } from '../utils/crypto';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { gdprService } from '../services/gdpr.service';
 import { createChainedAuditEvent } from '../services/audit.service';
+import { getAccessiblePatientIds, canViewPatient, getActiveGrantForDoctor, logPatientAccess } from '../services/panelAccess.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -37,6 +38,25 @@ router.get('/', async (req, res) => {
   let whereClause: any = {};
   if (user.role === Role.PATIENT) {
     whereClause.patientId = user.id;
+  } else if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
+    // Clinicians are scoped to their own panel. An explicit ?patientId outside
+    // the panel is a denied access attempt.
+    const accessible = await getAccessiblePatientIds(user);
+    if (accessible !== null) {
+      if (patientId && !accessible.includes(patientId as string)) {
+        await rulesEngine.triggerViolation({
+          ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+          description: `${user.role} ${user.email} queried medical records for unassigned patient ${patientId}.`,
+          userId: user.id,
+          sourceIp: req.ip,
+          resource: `Patient:${patientId}`,
+        });
+        return res.status(403).json({ error: 'Access denied: You are not assigned to this patient' });
+      }
+      whereClause.patientId = patientId ? patientId as string : { in: accessible };
+    } else if (patientId) {
+      whereClause.patientId = patientId as string;
+    }
   } else if (patientId) {
     whereClause.patientId = patientId as string;
   }
@@ -175,15 +195,18 @@ router.get('/:id', async (req, res) => {
     return res.status(403).json({ error: 'Access denied' });
   }
 
-  // Rule Check: Doctor accessing record of patient without assignment/consultation
-  if (user.role === Role.DOCTOR) {
-    const consultation = await prisma.consultation.findFirst({
-      where: { patientId: record.patientId, doctorId: user.id },
-    });
-    if (!consultation) {
+  // Rule Check: Doctor/Nurse accessing record of patient outside their panel
+  if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
+    let allowed = await canViewPatient(user, record.patientId);
+    // Doctors additionally honored for a temporary patient-issued grant.
+    if (!allowed && user.role === Role.DOCTOR) {
+      const grant = await getActiveGrantForDoctor(user.id, record.patientId);
+      if (grant) allowed = true;
+    }
+    if (!allowed) {
       await rulesEngine.triggerViolation({
         ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
-        description: `Doctor ${user.email} attempted access to MedicalRecord:${recordId} for unassigned patient ${record.patientId}`,
+        description: `${user.role} ${user.email} attempted access to MedicalRecord:${recordId} for unassigned patient ${record.patientId}`,
         userId: user.id,
         sourceIp: req.ip,
         resource: `MedicalRecord:${recordId}`,
@@ -225,6 +248,18 @@ router.get('/:id', async (req, res) => {
     userId: user.id,
     ipAddress: req.ip || 'unknown',
   });
+
+  // Patient-facing "who viewed my record" access log
+  if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
+    await logPatientAccess({
+      patientId: record.patientId,
+      viewerId: user.id,
+      viewerRole: user.role,
+      action: 'READ_MEDICAL_RECORD',
+      resourceType: 'MEDICAL_RECORD',
+      resourceId: record.id,
+    });
+  }
 
   res.json({ id: record.id, patientId: record.patientId, data: JSON.parse(plaintext), createdAt: record.createdAt });
 });

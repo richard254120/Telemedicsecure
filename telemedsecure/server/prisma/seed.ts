@@ -1,8 +1,42 @@
-import { PrismaClient, Role, VerificationStatus } from '@prisma/client';
+import { PrismaClient, Role, VerificationStatus, CareTeamRole, CareTeamStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import argon2 from 'argon2';
 
 const prisma = new PrismaClient();
+
+/**
+ * Keep clinicians' panels intact once per-doctor/per-nurse data isolation is
+ * enforced. For every existing consultation we make the attending doctor an
+ * ACTIVE DOCTOR care-team member of the patient. Idempotent: relies on the
+ * @@unique([patientId, clinicianId]) upsert, so re-running on boot is safe and
+ * never overwrites manual/administrative changes to membership status.
+ */
+async function syncCareTeamFromConsultations() {
+  const consults = await prisma.consultation.findMany({
+    select: { patientId: true, doctorId: true },
+    distinct: ['patientId', 'doctorId'],
+  });
+
+  let created = 0;
+  for (const c of consults) {
+    if (!c.doctorId) continue;
+    const existing = await prisma.careTeamMembership.findUnique({
+      where: { patientId_clinicianId: { patientId: c.patientId, clinicianId: c.doctorId } },
+    });
+    if (existing) continue;
+    await prisma.careTeamMembership.create({
+      data: {
+        patientId: c.patientId,
+        clinicianId: c.doctorId,
+        role: CareTeamRole.DOCTOR,
+        status: CareTeamStatus.ACTIVE,
+        source: 'CONSULTATION',
+      },
+    });
+    created++;
+  }
+  if (created > 0) console.log(`CareTeam: derived ${created} doctor membership(s) from existing consultations.`);
+}
 
 // This seed is executed on every boot by scripts/start.js (`prisma db seed`), so
 // it must be non-destructive. The previous revision wrote `passwordHash`,
@@ -61,6 +95,11 @@ async function main() {
         }
       });
     }
+
+  // Always reconcile care-team memberships from existing consultations so
+  // clinicians do not lose panel access to patients they already treat once
+  // per-clinician data isolation goes live.
+  await syncCareTeamFromConsultations();
 
   if (!SEED_DEMO_USERS) {
     console.log('Seeding completed: administrator bootstrapped, demo roster skipped (production).');

@@ -105,6 +105,14 @@ model User {
   triageAssessmentsOfficer TriageAssessment[]  @relation("OfficerTriageAssessments")
   carePlansPatient     CarePlan[]             @relation("PatientCarePlans")
   carePlansCoordinator CarePlan[]             @relation("CoordinatorCarePlans")
+
+  // Care team + patient-issued access control
+  careTeamMemberships  CareTeamMembership[]   @relation("PatientCareTeam")
+  careTeamClinician    CareTeamMembership[]   @relation("ClinicianCareTeam")
+  accessGrantsIssued   AccessGrant[]          @relation("PatientAccessGrants")
+  accessGrantsDoctor   AccessGrant[]          @relation("DoctorAccessGrants")
+  patientAccessEvents  PatientAccessEvent[]   @relation("PatientAccessLog")
+  viewerAccessEvents   PatientAccessEvent[]   @relation("ViewerAccessLog")
 }
 
 model StaffInvitation {
@@ -658,6 +666,91 @@ model MedicationInventory {
   isRestricted   Boolean  @default(false)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+enum CareTeamRole {
+  DOCTOR
+  NURSE
+}
+
+enum CareTeamStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model CareTeamMembership {
+  id          String         @id @default(uuid())
+  patientId   String
+  clinicianId String
+  role        CareTeamRole
+  status      CareTeamStatus @default(ACTIVE)
+  source      String         @default("CONSULTATION")
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  patient   User @relation("PatientCareTeam", fields: [patientId], references: [id])
+  clinician User @relation("ClinicianCareTeam", fields: [clinicianId], references: [id])
+
+  @@unique([patientId, clinicianId])
+  @@index([clinicianId, status])
+  @@index([patientId, status])
+}
+
+enum AccessGrantStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+}
+
+model AccessGrant {
+  id          String            @id @default(uuid())
+  patientId   String
+  doctorId    String
+  tokenHash   String            @unique
+  scope       String            @default("RECORDS_READ")
+  purpose     String?
+  status      AccessGrantStatus @default(ACTIVE)
+  expiresAt   DateTime
+  redeemedAt  DateTime?
+  revokedAt   DateTime?
+  lastAccessAt DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  patient User @relation("PatientAccessGrants", fields: [patientId], references: [id])
+  doctor  User @relation("DoctorAccessGrants", fields: [doctorId], references: [id])
+
+  @@index([doctorId, status])
+  @@index([patientId, status])
+}
+
+model ChatMessage {
+  id         String   @id @default(uuid())
+  channelId  String
+  senderId   String
+  senderName String
+  senderRole String
+  body       String
+  encrypted  Boolean  @default(true)
+  createdAt  DateTime @default(now())
+
+  @@index([channelId, createdAt])
+}
+
+model PatientAccessEvent {
+  id          String   @id @default(uuid())
+  patientId   String
+  viewerId    String
+  viewerRole  String
+  action      String
+  resourceType String?
+  resourceId  String?
+  createdAt   DateTime @default(now())
+
+  patient User @relation("PatientAccessLog", fields: [patientId], references: [id])
+  viewer  User @relation("ViewerAccessLog", fields: [viewerId], references: [id])
+
+  @@index([patientId, createdAt])
 }
 
 

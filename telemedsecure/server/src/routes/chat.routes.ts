@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { requireAuth } from '../middlewares/auth';
-import { chatService } from '../services/chat.service';
+import { chatService, canAccessChannel } from '../services/chat.service';
+import { rulesEngine } from '../services/rulesEngine.service';
 
 const router = Router();
 
@@ -10,10 +11,23 @@ router.use(requireAuth);
  * GET /api/v1/chat/channels/:channelId/messages
  * Retrieve persistent messages for a clinical channel
  */
-router.get('/channels/:channelId/messages', (req: Request, res: Response) => {
+router.get('/channels/:channelId/messages', async (req: Request, res: Response) => {
   try {
     const channelId = String(req.params.channelId);
-    const messages = chatService.getChannelMessages(channelId);
+    const user = (req as any).user;
+
+    if (!(await canAccessChannel(user, channelId))) {
+      await rulesEngine.triggerViolation({
+        ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+        description: `${user.role} ${user.email} attempted to read care-team channel ${channelId} without membership.`,
+        userId: user.id,
+        sourceIp: req.ip,
+        resource: `ChatChannel:${channelId}`,
+      });
+      return res.status(403).json({ error: 'Access denied: Not a member of this care team' });
+    }
+
+    const messages = await chatService.getChannelMessages(channelId);
     res.json(messages);
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve messages', details: err.message });
@@ -32,6 +46,17 @@ router.post('/channels/:channelId/messages', async (req: Request, res: Response)
 
     if (!text && !ciphertext) {
       return res.status(400).json({ error: 'Message content is required' });
+    }
+
+    if (!(await canAccessChannel(user, channelId))) {
+      await rulesEngine.triggerViolation({
+        ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+        description: `${user.role} ${user.email} attempted to post to care-team channel ${channelId} without membership.`,
+        userId: user.id,
+        sourceIp: req.ip,
+        resource: `ChatChannel:${channelId}`,
+      });
+      return res.status(403).json({ error: 'Access denied: Not a member of this care team' });
     }
 
     const savedMessage = await chatService.postMessage(

@@ -1,5 +1,6 @@
-import { PrismaClient, Role, PrescriptionStatus } from '@prisma/client';
+import { PrismaClient, Role, PrescriptionStatus, CareTeamRole, CareTeamStatus, AccessGrantStatus } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import {
   generateDoctorEd25519Keys,
   decryptDoctorPrivateKey,
@@ -284,6 +285,69 @@ async function seedDemo() {
       openedBy: admin.id
     }
   });
+
+  // 9. Care team, temporary access key, and chat thread
+  console.log('👥 Seeding care-team membership, a shared access key, and care-thread messages...');
+  const careTeamChannel = `care-team-patient-${patient.id}`;
+
+  // Attending doctor + assigned nurse form the patient's active care team.
+  await prisma.careTeamMembership.upsert({
+    where: { patientId_clinicianId: { patientId: patient.id, clinicianId: doctor.id } },
+    update: { status: CareTeamStatus.ACTIVE, role: CareTeamRole.DOCTOR },
+    create: { patientId: patient.id, clinicianId: doctor.id, role: CareTeamRole.DOCTOR, status: CareTeamStatus.ACTIVE, source: 'CONSULTATION' },
+  });
+  await prisma.careTeamMembership.upsert({
+    where: { patientId_clinicianId: { patientId: patient.id, clinicianId: nurse.id } },
+    update: { status: CareTeamStatus.ACTIVE, role: CareTeamRole.NURSE },
+    create: { patientId: patient.id, clinicianId: nurse.id, role: CareTeamRole.NURSE, status: CareTeamStatus.ACTIVE, source: 'MANUAL' },
+  });
+
+  // A second doctor the patient has NOT consulted — reachable only via a
+  // temporary, redeemed, time-boxed access key (shared-with-me demo).
+  const specialist = await prisma.user.upsert({
+    where: { email: 'specialist@telemed.com' },
+    update: { passwordHash, isActive: true, role: Role.DOCTOR, verificationStatus: 'VERIFIED' as any },
+    create: {
+      email: 'specialist@telemed.com',
+      passwordHash,
+      role: Role.DOCTOR,
+      firstName: 'Owen',
+      lastName: 'Castellanos',
+      specialty: 'Endocrinology',
+      verificationStatus: 'VERIFIED' as any,
+    },
+  });
+
+  const sampleCode = 'K7M2-QP9X-4TZR';
+  await prisma.accessGrant.upsert({
+    where: { tokenHash: crypto.createHash('sha256').update(sampleCode).digest('hex') },
+    update: { status: AccessGrantStatus.ACTIVE, redeemedAt: new Date(), expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) },
+    create: {
+      patientId: patient.id,
+      doctorId: specialist.id,
+      tokenHash: crypto.createHash('sha256').update(sampleCode).digest('hex'),
+      scope: 'RECORDS_READ',
+      purpose: 'Second opinion on hypertension management',
+      status: AccessGrantStatus.ACTIVE,
+      redeemedAt: new Date(),
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    },
+  });
+
+  // Seed the care-team thread so the workflow is immediately visible. The
+  // system welcome row is inserted lazily on first read by the chat service.
+  const existingChat = await prisma.chatMessage.count({ where: { channelId: careTeamChannel } });
+  if (existingChat === 0) {
+    await prisma.chatMessage.createMany({
+      data: [
+        { channelId: careTeamChannel, senderId: patient.id, senderName: `${patient.firstName} ${patient.lastName}`, senderRole: 'PATIENT', body: 'I have been feeling dizzy in the mornings again.', encrypted: true },
+        { channelId: careTeamChannel, senderId: nurse.id, senderName: `${nurse.firstName} ${nurse.lastName}`, senderRole: 'NURSE', body: 'Noted, Alice. Please log your blood pressure and SpO2 today so the team can review.', encrypted: true },
+        { channelId: careTeamChannel, senderId: doctor.id, senderName: `Dr. ${doctor.firstName} ${doctor.lastName}`, senderRole: 'DOCTOR', body: 'I will review your latest vitals and adjust the ACE inhibitor if needed.', encrypted: true },
+      ],
+    });
+  }
+
+  console.log('   🔑 Sample access key (specialist@telemed.com): ' + sampleCode + ' (72h, already redeemed)');
 
   console.log('\n=============================================================');
   console.log('🎉 [TeleMedSecure] Demo Environment Successfully Initialized!');

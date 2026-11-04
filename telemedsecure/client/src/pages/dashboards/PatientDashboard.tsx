@@ -30,21 +30,23 @@ import {
   DollarSign,
   Receipt,
   Eye,
-  ClipboardCheck
+  ClipboardCheck,
+  Users,
+  ShieldAlert
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
 import Shell from '../../dashboard-shell/Shell';
 import { VERIFICATION_GROUP, accentForRole, brandSubtitleForRole } from '../../dashboard-shell/navConfig';
-import { Button, ErrorState } from '../../dashboard-shell/ui';
-import { get as apiGet, errorMessage } from '../../dashboard-shell/transport';
+import { Button, ErrorState, Panel, Badge, SecretField, Field, EmptyState, INPUT_CLASS } from '../../dashboard-shell/ui';
+import { get as apiGet, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavGroup, NavTab } from '../../dashboard-shell/types';
 
 export default function PatientDashboard() {
   const navigate = useNavigate();
   const { user, getAuthHeaders, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState<'appointments' | 'records' | 'prescriptions' | 'consent' | 'billing'>('appointments');
+  const [activeTab, setActiveTab] = useState<'appointments' | 'records' | 'prescriptions' | 'consent' | 'billing' | 'access'>('appointments');
 
   // State
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -56,6 +58,17 @@ export default function PatientDashboard() {
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+
+  // Care & Access state (care team, temporary access keys, access log)
+  const [careTeam, setCareTeam] = useState<any[]>([]);
+  const [grants, setGrants] = useState<any[]>([]);
+  const [accessLog, setAccessLog] = useState<any[]>([]);
+  const [accessBusy, setAccessBusy] = useState(false);
+  const [issueDoctorId, setIssueDoctorId] = useState('');
+  const [issueTtl, setIssueTtl] = useState<'1h' | '24h' | '72h' | '7d'>('24h');
+  const [issuePurpose, setIssuePurpose] = useState('');
+  const [issuedCode, setIssuedCode] = useState<string | null>(null);
+  const [teamClinicianId, setTeamClinicianId] = useState('');
 
   // New Modals State
   const [selectedRxForDoc, setSelectedRxForDoc] = useState<any | null>(null);
@@ -93,6 +106,7 @@ export default function PatientDashboard() {
   useEffect(() => {
     fetchPatientData();
     fetchDoctors();
+    fetchCareAccess();
   }, [user]);
 
   const fetchDoctors = async () => {
@@ -108,6 +122,102 @@ export default function PatientDashboard() {
       }
     } catch (e) {
       console.error('Failed to load doctors list', e);
+    }
+  };
+
+  const fetchCareAccess = async () => {
+    if (!user?.id) return;
+    try {
+      const [teamRes, grantsRes, logRes] = await Promise.all([
+        apiGet<{ members: any[] }>(getAuthHeaders, `/care-team/team/${user.id}`, 'Failed to load care team'),
+        apiGet<any[]>(getAuthHeaders, '/access/grants', 'Failed to load access grants'),
+        apiGet<any[]>(getAuthHeaders, '/access/log', 'Failed to load access log')
+      ]);
+      setCareTeam(Array.isArray(teamRes?.members) ? teamRes.members : []);
+      setGrants(Array.isArray(grantsRes) ? grantsRes : []);
+      setAccessLog(Array.isArray(logRes) ? logRes : []);
+    } catch (e) {
+      console.error('Failed to load care & access data', e);
+    }
+  };
+
+  const handleIssueGrant = async () => {
+    if (!issueDoctorId) {
+      setActionMessage('Select a physician to share your record with.');
+      return;
+    }
+    setAccessBusy(true);
+    try {
+      const data = await apiPost<{ code: string }>(
+        getAuthHeaders,
+        '/access/grants',
+        { doctorId: issueDoctorId, ttl: issueTtl, purpose: issuePurpose || undefined },
+        'Failed to issue access key'
+      );
+      setIssuedCode(data.code);
+      setIssuePurpose('');
+      fetchCareAccess();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to issue access key'));
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
+  const handleRevokeGrant = async (grantId: string) => {
+    setAccessBusy(true);
+    try {
+      await apiPost(getAuthHeaders, `/access/grants/${grantId}/revoke`, {}, 'Failed to revoke access');
+      fetchCareAccess();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to revoke access'));
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
+  const handleRegenerateGrant = async (grantId: string) => {
+    setAccessBusy(true);
+    try {
+      const data = await apiPost<{ code: string }>(
+        getAuthHeaders,
+        `/access/grants/${grantId}/regenerate`,
+        {},
+        'Failed to regenerate access key'
+      );
+      setIssuedCode(data.code);
+      fetchCareAccess();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to regenerate access key'));
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
+  const handleAddTeamMember = async () => {
+    if (!teamClinicianId || !user?.id) return;
+    setAccessBusy(true);
+    try {
+      await apiPost(getAuthHeaders, '/care-team/team', { patientId: user.id, clinicianId: teamClinicianId }, 'Failed to add care team member');
+      setTeamClinicianId('');
+      fetchCareAccess();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to add care team member'));
+    } finally {
+      setAccessBusy(false);
+    }
+  };
+
+  const handleRemoveTeamMember = async (clinicianId: string) => {
+    if (!user?.id) return;
+    setAccessBusy(true);
+    try {
+      await apiPost(getAuthHeaders, '/care-team/team/remove', { patientId: user.id, clinicianId }, 'Failed to remove care team member');
+      fetchCareAccess();
+    } catch (e) {
+      setActionMessage(errorMessage(e, 'Failed to remove care team member'));
+    } finally {
+      setAccessBusy(false);
     }
   };
 
@@ -279,6 +389,7 @@ export default function PatientDashboard() {
     { id: 'prescriptions', label: 'Prescriptions', caption: 'Signed e-prescriptions', group: 'Patient Portal', icon: Pill },
     { id: 'billing', label: 'Billing & Copays', caption: 'Invoices & statements', group: 'Patient Portal', icon: CreditCard },
     { id: 'consent', label: 'GDPR Consent & Privacy', caption: 'Consent & data rights', group: 'Patient Portal', icon: Shield },
+    { id: 'access', label: 'Care & Access', caption: 'Care team, shared keys, access log', group: 'Patient Portal', icon: KeyRound },
   ];
   const nav: NavGroup[] = [{ name: 'Patient Portal', tabs: patientTabs }, VERIFICATION_GROUP];
   const counts: Record<string, CountChip> = {
@@ -287,6 +398,7 @@ export default function PatientDashboard() {
     prescriptions: { value: prescriptions.length, status: 'success' },
     billing: { value: patientInvoices.filter(i => i.status === 'PENDING').length, status: 'success' },
     consent: { value: consents.length, status: 'success' },
+    access: { value: careTeam.length, status: 'success' },
   };
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const joinActiveCall = () => {
@@ -819,6 +931,174 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Tab 6: Care Team & Record Access */}
+        {activeTab === 'access' && (
+          <div className="space-y-6 animate-fadeIn">
+            <div>
+              <h2 className="text-lg font-bold text-white flex items-center space-x-2">
+                <KeyRound className="w-5 h-5 text-cyan-400" />
+                <span>Care Team & Record Access</span>
+              </h2>
+              <p className="text-xs text-slate-400">
+                Manage who is on your care team, share your chart with a physician through a temporary key, and review who viewed your records.
+              </p>
+            </div>
+
+            {/* Care Team */}
+            <Panel title="Your Care Team" icon={Users} description="Physicians and nurses assigned to your care.">
+              <div className="space-y-3">
+                {careTeam.length === 0 ? (
+                  <EmptyState icon={Users} title="No care team members yet" description="Clinicians assigned through your consultations appear here." />
+                ) : (
+                  <div className="grid gap-2">
+                    {careTeam.map((m) => (
+                      <div key={m.id} className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-2.5">
+                        <div className="flex items-center space-x-3">
+                          <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${m.role === 'NURSE' ? 'bg-emerald-500/15 text-emerald-300' : 'bg-blue-500/15 text-blue-300'}`}>
+                            {m.role === 'NURSE' ? <User className="w-4 h-4" /> : <Stethoscope className="w-4 h-4" />}
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold text-white">{m.clinician?.firstName} {m.clinician?.lastName}</p>
+                            <p className="text-[11px] text-slate-400">{m.clinician?.email} · {m.role}</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => handleRemoveTeamMember(m.clinician?.id)}
+                          disabled={accessBusy}
+                          title="Remove from care team"
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-slate-800 disabled:opacity-40"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-end gap-2 pt-3 border-t border-slate-800">
+                  <Field label="Add clinician" className="flex-1">
+                    <select value={teamClinicianId} onChange={(e) => setTeamClinicianId(e.target.value)} className={INPUT_CLASS}>
+                      <option value="">Select a physician…</option>
+                      {doctorsList.map((d) => (
+                        <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}{d.specialty ? ` — ${d.specialty}` : ''}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Button variant="secondary" icon={PlusCircle} onClick={handleAddTeamMember} busy={accessBusy} disabled={!teamClinicianId}>Add</Button>
+                </div>
+              </div>
+            </Panel>
+
+            {/* Issue access key */}
+            <Panel title="Share My Record (Temporary Access Key)" icon={KeyRound} description="Grant one physician time-boxed read access. The code is bound to that doctor and shown only once.">
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Physician" required>
+                    <select value={issueDoctorId} onChange={(e) => setIssueDoctorId(e.target.value)} className={INPUT_CLASS}>
+                      <option value="">Select a doctor…</option>
+                      {doctorsList.map((d) => (
+                        <option key={d.id} value={d.id}>Dr. {d.firstName} {d.lastName}{d.specialty ? ` — ${d.specialty}` : ''}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="Access window" required>
+                    <select value={issueTtl} onChange={(e) => setIssueTtl(e.target.value as any)} className={INPUT_CLASS}>
+                      <option value="1h">1 hour</option>
+                      <option value="24h">24 hours</option>
+                      <option value="72h">72 hours</option>
+                      <option value="7d">7 days</option>
+                    </select>
+                  </Field>
+                </div>
+                <Field label="Purpose (optional)">
+                  <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} placeholder="e.g. Second opinion on my lab results" className={INPUT_CLASS} />
+                </Field>
+                <div className="flex justify-end">
+                  <Button variant="primary" icon={KeyRound} onClick={handleIssueGrant} busy={accessBusy} disabled={!issueDoctorId}>Issue Access Key</Button>
+                </div>
+                {issuedCode && (
+                  <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
+                    <p className="text-xs font-semibold text-emerald-300 flex items-center space-x-1.5">
+                      <CheckCircle2 className="w-4 h-4" />
+                      <span>Share this code securely — it is shown only once.</span>
+                    </p>
+                    <SecretField label="One-time access code" value={issuedCode} />
+                    <div className="flex justify-end">
+                      <Button variant="ghost" icon={X} onClick={() => setIssuedCode(null)}>Dismiss</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </Panel>
+
+            {/* Grants list */}
+            <Panel title="Access Grants" icon={ShieldCheck} description="Every key you have issued. Revoke cuts access immediately.">
+              {grants.length === 0 ? (
+                <EmptyState icon={KeyRound} title="No access keys issued" description="Issued keys and their status will appear here." />
+              ) : (
+                <div className="grid gap-2">
+                  {grants.map((g) => {
+                    const expired = new Date(g.expiresAt).getTime() <= Date.now();
+                    const isRevoked = g.effectiveStatus === 'REVOKED';
+                    const tone = isRevoked ? 'danger' : expired ? 'neutral' : g.redeemed ? 'info' : 'purple';
+                    const label = isRevoked ? 'REVOKED' : expired ? 'EXPIRED' : g.redeemed ? 'IN USE' : 'AWAITING REDEEM';
+                    return (
+                      <div key={g.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-white truncate">Dr. {g.doctor?.firstName} {g.doctor?.lastName}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {g.purpose ? `${g.purpose} · ` : ''}Expires {new Date(g.expiresAt).toLocaleString()}
+                            {g.lastAccessAt ? ` · last viewed ${new Date(g.lastAccessAt).toLocaleString()}` : ''}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <Badge tone={tone as any}>{label}</Badge>
+                          {!isRevoked && !expired && (
+                            <>
+                              <Button variant="ghost" icon={RefreshCw} onClick={() => handleRegenerateGrant(g.id)} busy={accessBusy}>Regenerate</Button>
+                              <Button variant="danger" icon={X} onClick={() => handleRevokeGrant(g.id)} busy={accessBusy}>Revoke</Button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Panel>
+
+            {/* Access log */}
+            <Panel title="Who Viewed My Records" icon={ShieldAlert} description="Audit trail of clinician reads against your chart.">
+              {accessLog.length === 0 ? (
+                <EmptyState icon={Eye} title="No record views yet" description="When a clinician opens your record it is logged here." />
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th className="py-2 pr-4 font-mono uppercase tracking-wider">Viewer</th>
+                        <th className="py-2 pr-4 font-mono uppercase tracking-wider">Action</th>
+                        <th className="py-2 font-mono uppercase tracking-wider">When</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/70">
+                      {accessLog.map((e) => (
+                        <tr key={e.id}>
+                          <td className="py-2.5 pr-4 text-white">
+                            {e.viewer?.firstName} {e.viewer?.lastName}
+                            <span className="ml-2 text-[10px] text-slate-500 font-mono">{e.viewerRole}</span>
+                          </td>
+                          <td className="py-2.5 pr-4 font-mono text-cyan-300">{e.action}</td>
+                          <td className="py-2.5 text-slate-400 font-mono">{new Date(e.createdAt).toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </Panel>
           </div>
         )}
       </Shell>
