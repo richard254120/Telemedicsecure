@@ -22,6 +22,20 @@
   }
 }
 
+/* -------------------------------------------------------------- *
+ * Distance-readable typography for the tiny, hard-coded pixel
+ * sizes used across the dense dashboards. The Tailwind theme in
+ * tailwind.config.js scales the named text-* utilities, but
+ * arbitrary values (text-[8/9/10/11px]) compile to fixed px and
+ * can't be reached from the theme, so they are re-mapped here.
+ * Unlayered rules placed after @tailwind utilities win the
+ * cascade, so this lifts ~530 scattered call sites in one place.
+ * -------------------------------------------------------------- */
+.text-\[8px\]  { font-size: 0.8125rem !important; line-height: 1.4; } /* 13px */
+.text-\[9px\]  { font-size: 0.875rem  !important; line-height: 1.4; } /* 14px */
+.text-\[10px\] { font-size: 0.9375rem !important; line-height: 1.4; } /* 15px */
+.text-\[11px\] { font-size: 1rem      !important; line-height: 1.4; } /* 16px */
+
 /* Custom Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;

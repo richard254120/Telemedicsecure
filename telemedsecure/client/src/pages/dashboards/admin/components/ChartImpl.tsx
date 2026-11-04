@@ -25,7 +25,7 @@ const TOOLTIP_STYLE = {
   backgroundColor: '#0f172a',
   border: '1px solid #334155',
   borderRadius: 12,
-  fontSize: 11,
+  fontSize: 14,
   color: '#e2e8f0',
 };
 
@@ -89,10 +89,10 @@ const ChartImpl: React.FC<Omit<ChartBlockProps, 'variant'> & { variant: ChartBlo
       <ResponsiveContainer width="100%" height="100%">
         <BarChart data={series}>
           <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-          <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 11 }} interval={0} />
-          <YAxis stroke="#94a3b8" tick={{ fontSize: 11 }} allowDecimals={false} width={36} />
+          <XAxis dataKey="name" stroke="#94a3b8" tick={{ fontSize: 14 }} interval={0} />
+          <YAxis stroke="#94a3b8" tick={{ fontSize: 14 }} allowDecimals={false} width={44} />
           <Tooltip contentStyle={TOOLTIP_STYLE} cursor={{ fill: 'rgba(148,163,184,0.08)' }} />
-          <Legend wrapperStyle={{ fontSize: 11 }} />
+          <Legend wrapperStyle={{ fontSize: 14 }} />
           <Bar dataKey="value" name="Volume" radius={[8, 8, 0, 0]} maxBarSize={48}>
             {series.map(point => (
               <Cell key={point.name} fill={point.color} />
