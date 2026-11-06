@@ -71,8 +71,9 @@ router.post('/anchor', async (req: Request, res: Response) => {
     });
 
     res.json({
-      message: 'Audit events Merkle root successfully anchored on Hardhat blockchain.',
-      anchored: true,
+      message: result.anchored
+        ? 'Audit events Merkle root successfully anchored on Hardhat blockchain.'
+        : 'Merkle root computed and recorded, but on-chain anchoring is PENDING: the blockchain node was unreachable, so the batch was NOT sealed on-chain.',
       ...result
     });
   } catch (err: any) {

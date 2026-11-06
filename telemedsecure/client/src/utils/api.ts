@@ -237,6 +237,12 @@ export interface AuditVerificationReport {
   } | null;
   anchorsChecked: number;
   onChainVerified: boolean;
+  /**
+   * Whether the blockchain node could be reached during verification. When
+   * false, on-chain anchor checks were skipped (PENDING) and must never be
+   * shown as a tamper breach — only the DB hash chain is definitive then.
+   */
+  onChainReachable: boolean;
   merkleRootsMatch: boolean;
   anchorRecords: Array<{
     id: string;
@@ -245,7 +251,11 @@ export interface AuditVerificationReport {
     blockNumber: number | null;
     eventCount: number;
     verifiedAt: string;
-    onChainValid: boolean;
+    /**
+     * true = root confirmed on-chain, false = reachable but genuinely absent
+     * (real tamper), null = not checked because the node is offline (pending).
+     */
+    onChainValid: boolean | null;
   }>;
   verifiedAt: string;
 }

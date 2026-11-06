@@ -185,9 +185,15 @@ export default function AuditIntegrityDashboard() {
                         <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">
                           AUDIT TRAIL INTEGRITY CONFIRMED
                         </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          ON-CHAIN VERIFIED
-                        </span>
+                        {report.onChainReachable ? (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            ON-CHAIN VERIFIED
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            ON-CHAIN PENDING (NODE OFFLINE)
+                          </span>
+                        )}
                       </div>
                       <h2 className="text-2xl font-black text-white tracking-tight">
                         STATUS: VALID (CHAIN INTACT & MERKLE ANCHORED)
@@ -206,6 +212,16 @@ export default function AuditIntegrityDashboard() {
                   Batch Merkle roots have been anchored on the Hardhat Solidity smart contract (<code className="text-cyan-400 font-mono">AuditAnchor.sol</code>),
                   guaranteeing mathematical tamper-detection and regulatory non-repudiation.
                 </p>
+                {!report.onChainReachable && (
+                  <p className="text-xs text-amber-300 leading-relaxed max-w-3xl flex items-start space-x-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>
+                      The hash chain is intact, but the blockchain node was unreachable at verify time, so on-chain Merkle
+                      anchors could not be re-checked. This is a pending availability state — not a tamper. Restart the node
+                      and re-run the verify job to confirm anchors against <code className="font-mono">getRoot()</code>.
+                    </span>
+                  </p>
+                )}
               </div>
             ) : (
               <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-r from-rose-950/80 via-slate-900 to-rose-950/80 border-2 border-rose-500 shadow-2xl space-y-4 animate-pulse">
@@ -297,13 +313,29 @@ export default function AuditIntegrityDashboard() {
                       <td className="py-3 px-4 text-slate-400 break-all select-all">
                         {a.txHash ? `${a.txHash.slice(0, 14)}...` : 'N/A'}
                       </td>
-                      <td className="py-3 px-4 text-slate-300 font-sans">{a.blockNumber || 1}</td>
+                      <td className="py-3 px-4 text-slate-300 font-sans">
+                        {a.blockNumber != null ? a.blockNumber : a.txHash ? '—' : 'Pending'}
+                      </td>
                       <td className="py-3 px-4 text-slate-300 font-sans">{a.eventCount}</td>
                       <td className="py-3 px-4 font-sans">
-                        <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                          <CheckCircle2 className="w-3 h-3" />
-                          <span>getRoot() MATCH</span>
-                        </span>
+                        {a.onChainValid === true && (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                            <CheckCircle2 className="w-3 h-3" />
+                            <span>getRoot() MATCH</span>
+                          </span>
+                        )}
+                        {a.onChainValid === false && (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-rose-500/20 text-rose-300 border border-rose-500/30">
+                            <ShieldAlert className="w-3 h-3" />
+                            <span>getRoot() MISMATCH</span>
+                          </span>
+                        )}
+                        {a.onChainValid === null && (
+                          <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            <Clock className="w-3 h-3" />
+                            <span>PENDING (node offline)</span>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   ))}

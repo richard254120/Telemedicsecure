@@ -221,6 +221,31 @@ export default function IncidentForensicsDashboard() {
     }
   };
 
+  const handleDownloadPdf = async (reportId: string, title: string) => {
+    try {
+      // The download endpoint is ADMIN-gated and expects a Bearer token, which a
+      // plain <a href> cannot send. Fetch as an authenticated blob instead.
+      const res = await fetch(`${API_BASE}/investigation/reports/${reportId}/download`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) {
+        alert('Download failed: unauthorized or report file missing.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(title || 'forensic-report').replace(/[^a-z0-9-]+/gi, '_')}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert(`Download failed: ${e.message}`);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto space-y-8">
@@ -511,18 +536,20 @@ export default function IncidentForensicsDashboard() {
                               SHA-256: {rep.reportHash}
                             </div>
                             <div className="font-mono text-[9px] text-slate-500">
-                              Block #{rep.blockNumber} • Tx: {rep.txHash?.slice(0, 20)}...
+                              {rep.blockNumber
+                                ? `Block #${rep.blockNumber} • Tx: ${rep.txHash?.slice(0, 20)}...`
+                                : rep.txHash
+                                  ? `Tx: ${rep.txHash.slice(0, 20)}...`
+                                  : 'Anchor pending (blockchain node offline at generation)'}
                             </div>
                           </div>
-                          <a
-                            href={`${API_BASE}/investigation/reports/${rep.id}/download`}
-                            target="_blank"
-                            rel="noreferrer"
+                          <button
+                            onClick={() => handleDownloadPdf(rep.id, rep.title)}
                             className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 rounded-lg text-xs font-semibold flex items-center space-x-1"
                           >
                             <Download className="w-3.5 h-3.5" />
                             <span>Download PDF</span>
-                          </a>
+                          </button>
                         </div>
                       ))}
                     </div>

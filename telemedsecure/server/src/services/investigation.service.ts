@@ -21,6 +21,8 @@ export interface ReconstructTimelineFilters {
   action?: string;
   startTime?: Date | string;
   endTime?: Date | string;
+  /** Authenticated acting principal, recorded on the audit trail for non-repudiation. */
+  actorUserId?: string | null;
 }
 
 export class InvestigationService {
@@ -42,10 +44,11 @@ export class InvestigationService {
     description: string;
     severity?: Severity;
     openedBy?: string;
+    actorUserId?: string | null;
     targetUserId?: string;
     targetPatientId?: string;
   }): Promise<Incident> {
-    const { alertId, title, description, severity = Severity.HIGH, openedBy, targetUserId, targetPatientId } = params;
+    const { alertId, title, description, severity = Severity.HIGH, openedBy, actorUserId, targetUserId, targetPatientId } = params;
 
     const incident = await prisma.incident.create({
       data: {
@@ -63,8 +66,8 @@ export class InvestigationService {
     await createChainedAuditEvent({
       action: 'INCIDENT_OPENED',
       resource: `Incident:${incident.id}`,
-      userId: openedBy || null,
-      details: { title, severity, alertId },
+      userId: actorUserId || null,
+      details: { title, severity, alertId, openedBy },
     });
 
     return incident;
@@ -141,6 +144,7 @@ export class InvestigationService {
     await createChainedAuditEvent({
       action: 'INCIDENT_TIMELINE_RECONSTRUCTED',
       resource: `Incident:${incidentId}`,
+      userId: filters.actorUserId || null,
       details: { eventsCount: timelineItems.length, filters },
     });
 
@@ -156,8 +160,9 @@ export class InvestigationService {
     evidenceType?: string;
     hashValue?: string;
     metadata?: any;
+    actorUserId?: string | null;
   }): Promise<EvidenceFinding> {
-    const { incidentId, description, evidenceType = 'LOG_EXTRACT', hashValue, metadata } = params;
+    const { incidentId, description, evidenceType = 'LOG_EXTRACT', hashValue, metadata, actorUserId } = params;
 
     // Authoritative integrity binding is ALWAYS computed server-side over the
     // canonical evidence content. Trusting a caller-supplied digest would let an
@@ -192,6 +197,7 @@ export class InvestigationService {
     await createChainedAuditEvent({
       action: 'EVIDENCE_FINDING_ATTACHED',
       resource: `Evidence:${finding.id}`,
+      userId: actorUserId || null,
       details: { incidentId, evidenceType, hashValue: computedHash, claimedArtifactHash: hashValue || null }
     });
 
@@ -206,6 +212,7 @@ export class InvestigationService {
     incidentId: string;
     investigator?: string;
     summaryNotes?: string;
+    actorUserId?: string | null;
   }): Promise<{
     report: ForensicReport;
     pdfBuffer: Buffer;
@@ -215,7 +222,7 @@ export class InvestigationService {
     anchored: boolean;
     chainVerification: any;
   }> {
-    const { incidentId, investigator = 'Security Officer / Lead Forensics', summaryNotes } = params;
+    const { incidentId, investigator = 'Security Officer / Lead Forensics', summaryNotes, actorUserId } = params;
 
     const incident = await prisma.incident.findUnique({
       where: { id: incidentId },
@@ -287,6 +294,7 @@ export class InvestigationService {
     await createChainedAuditEvent({
       action: 'FORENSIC_REPORT_GENERATED_AND_ANCHORED',
       resource: `ForensicReport:${report.id}`,
+      userId: actorUserId || null,
       details: {
         incidentId,
         reportHash: reportHash0x,

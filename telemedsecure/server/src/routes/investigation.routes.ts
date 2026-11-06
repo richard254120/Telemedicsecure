@@ -33,6 +33,7 @@ router.post('/incidents', requireRole([Role.ADMIN]), async (req: Request, res: R
       description: description || 'Investigative case initiated from security alert',
       severity: severity || Severity.HIGH,
       openedBy: user.email || user.id,
+      actorUserId: user.id,
       targetUserId,
       targetPatientId,
     });
@@ -89,6 +90,7 @@ router.get('/incidents/:id', requireRole([Role.ADMIN]), async (req: Request, res
  */
 router.post('/incidents/:id/reconstruct', requireRole([Role.ADMIN]), async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const user = (req as any).user;
   const { userId, patientId, resource, action, startTime, endTime } = req.body;
 
   try {
@@ -99,6 +101,7 @@ router.post('/incidents/:id/reconstruct', requireRole([Role.ADMIN]), async (req:
       action,
       startTime,
       endTime,
+      actorUserId: user?.id ?? null,
     });
 
     res.json({
@@ -118,6 +121,7 @@ router.post('/incidents/:id/reconstruct', requireRole([Role.ADMIN]), async (req:
  */
 router.post('/incidents/:id/evidence', requireRole([Role.ADMIN]), async (req: Request, res: Response) => {
   const id = req.params.id as string;
+  const user = (req as any).user;
   const { description, evidenceType, hashValue, metadata } = req.body;
 
   if (!description) {
@@ -131,6 +135,7 @@ router.post('/incidents/:id/evidence', requireRole([Role.ADMIN]), async (req: Re
       evidenceType,
       hashValue,
       metadata,
+      actorUserId: user?.id ?? null,
     });
 
     res.status(201).json(finding);
@@ -153,12 +158,16 @@ router.post('/incidents/:id/report', requireRole([Role.ADMIN]), async (req: Requ
       incidentId: id,
       investigator: investigator || user.email || 'Lead Investigator',
       summaryNotes,
+      actorUserId: user?.id ?? null,
     });
 
     res.status(201).json({
-      message: 'Forensic Report generated and anchored onto blockchain successfully.',
+      message: result.anchored
+        ? 'Forensic Report generated and anchored on-chain successfully.'
+        : 'Forensic Report generated, but on-chain anchoring is PENDING: the blockchain node was unreachable, so the report hash was NOT sealed. It will need re-anchoring once the node is reachable.',
       report: result.report,
       reportHash: result.reportHash,
+      anchored: result.anchored,
       txHash: result.txHash,
       blockNumber: result.blockNumber,
       chainVerification: result.chainVerification,

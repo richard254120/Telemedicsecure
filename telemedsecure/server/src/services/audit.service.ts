@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { PrismaClient, AuditEvent } from '@prisma/client';
 import { canonicalJson } from '../utils/crypto';
 import { MerkleTree } from '../utils/merkle';
-import { anchorRootOnChain, isRootAnchoredOnChain, getRootFromChain } from './blockchain.service';
+import { anchorRootOnChain, isRootAnchoredOnChain, getRootFromChain, isBlockchainReachable } from './blockchain.service';
 
 const prisma = new PrismaClient();
 
@@ -189,8 +189,9 @@ let isAnchoringInProgress = false;
  */
 export async function anchorAuditEventsNow(): Promise<{
   merkleRoot: string;
-  txHash: string;
-  blockNumber: number;
+  txHash: string | null;
+  blockNumber: number | null;
+  anchored: boolean;
   eventCount: number;
   verificationId: string;
 } | null> {
@@ -219,25 +220,30 @@ export async function anchorAuditEventsNow(): Promise<{
   // 3. Anchor on Hardhat blockchain
   const onChain = await anchorRootOnChain(merkleRootBytes32);
 
-  // 4. Record in IntegrityVerification table
+  // 4. Record in IntegrityVerification table.
+  //    A batch sealed while the node was unreachable has NO real tx: we store
+  //    txHash/blockNumber as NULL (a PENDING anchor) instead of the placeholder
+  //    the offline path returns, so a later verify against a back-up node treats
+  //    it as "not yet confirmed" rather than a false on-chain mismatch/breach.
   const verification = await prisma.integrityVerification.create({
     data: {
       entityType: 'AuditEvent',
       entityId: `${events[0].id}:${events[events.length - 1].id}`,
       merkleRoot: merkleRootBytes32,
-      txHash: onChain.txHash,
-      blockNumber: onChain.blockNumber,
+      txHash: onChain.anchored ? onChain.txHash : null,
+      blockNumber: onChain.anchored ? onChain.blockNumber : null,
       eventCount: events.length,
       isValid: true
     }
   });
 
-  console.log(`AuditChain: Anchored batch of ${events.length} events. Root: ${merkleRootBytes32}, Tx: ${onChain.txHash}`);
+  console.log(`AuditChain: Anchored batch of ${events.length} events. Root: ${merkleRootBytes32}, Tx: ${onChain.anchored ? onChain.txHash : '(pending - node offline)'}`);
 
     return {
       merkleRoot: merkleRootBytes32,
-      txHash: onChain.txHash,
-      blockNumber: onChain.blockNumber,
+      txHash: onChain.anchored ? onChain.txHash : null,
+      blockNumber: onChain.anchored ? onChain.blockNumber : null,
+      anchored: onChain.anchored,
       eventCount: events.length,
       verificationId: verification.id
     };
@@ -274,6 +280,7 @@ export interface ChainVerificationReport {
   } | null;
   anchorsChecked: number;
   onChainVerified: boolean;
+  onChainReachable: boolean;
   merkleRootsMatch: boolean;
   anchorRecords: Array<{
     id: string;
@@ -282,7 +289,12 @@ export interface ChainVerificationReport {
     blockNumber: number | null;
     eventCount: number;
     verifiedAt: Date;
-    onChainValid: boolean;
+    /**
+     * true = root confirmed on-chain, false = reachable but genuinely absent
+     * (real tamper), null = could not be checked because the node is offline
+     * (anchor verification PENDING — never reported as a breach).
+     */
+    onChainValid: boolean | null;
   }>;
   verifiedAt: string;
 }
@@ -355,12 +367,25 @@ export async function verifyAuditChainAndMerkle(): Promise<ChainVerificationRepo
     orderBy: { verifiedAt: 'desc' }
   });
 
+  // The on-chain Merkle anchor is a SECONDARY proof. The DB hash-chain (chainIntact)
+  // is the definitive tamper-evidence layer. A blockchain OUTAGE must never be
+  // reported as a data breach, so when the node is unreachable we mark anchors as
+  // PENDING (null) rather than invalid, and only raise a real on-chain breach when
+  // the node IS reachable and a root is genuinely absent.
+  const onChainReachable = await isBlockchainReachable();
+
   let allOnChainValid = true;
   const anchorRecords: ChainVerificationReport['anchorRecords'] = [];
 
   for (const v of verifications) {
-    const onChainValid = await isRootAnchoredOnChain(v.merkleRoot);
-    if (!onChainValid) {
+    // txHash == null means the batch was sealed while the node was offline and
+    // never actually written on-chain: that is a PENDING anchor, not evidence of
+    // tampering. Only a batch that DID record a tx, yet whose root is absent from
+    // the reachable chain, is a genuine on-chain breach.
+    const onChainValid = !v.txHash
+      ? null
+      : (onChainReachable ? await isRootAnchoredOnChain(v.merkleRoot) : null);
+    if (onChainValid === false) {
       allOnChainValid = false;
     }
 
@@ -375,14 +400,17 @@ export async function verifyAuditChainAndMerkle(): Promise<ChainVerificationRepo
     });
   }
 
-  const isValid = chainIntact && (verifications.length === 0 || allOnChainValid);
+  const onChainBreach = onChainReachable && verifications.length > 0 && !allOnChainValid;
+  const isValid = chainIntact && !onChainBreach;
 
-  if (!isValid) {
+  if (!chainIntact || onChainBreach) {
     try {
       const { rulesEngine } = await import('./rulesEngine.service');
       await rulesEngine.triggerViolation({
         ruleId: 'AUDIT_CHAIN_BREAK',
-        description: `Cryptographic audit hash chain break detected: ${brokenEvent ? brokenEvent.reason : 'Merkle root on-chain verification mismatch'}`,
+        description: brokenEvent
+          ? `Cryptographic audit hash chain break detected: ${brokenEvent.reason}`
+          : 'Merkle root on-chain verification mismatch (anchored root absent from reachable chain)',
         resource: brokenEvent?.id ? `AuditEvent:${brokenEvent.id}` : 'AuditChain:Root',
         metadata: {
           brokenEvent,
@@ -402,7 +430,8 @@ export async function verifyAuditChainAndMerkle(): Promise<ChainVerificationRepo
     chainIntact,
     brokenEvent,
     anchorsChecked: verifications.length,
-    onChainVerified: allOnChainValid,
+    onChainVerified: onChainReachable ? allOnChainValid : false,
+    onChainReachable,
     merkleRootsMatch: chainIntact,
     anchorRecords,
     verifiedAt: new Date().toISOString()

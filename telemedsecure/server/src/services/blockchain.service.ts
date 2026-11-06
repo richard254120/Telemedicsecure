@@ -10,13 +10,40 @@ let contractInstance: ethers.Contract | null = null;
 let providerInstance: ethers.JsonRpcProvider | null = null;
 let walletInstance: ethers.Wallet | null = null;
 
+/**
+ * Locate the deployment artifact across every way the server may be launched.
+ *
+ * `tsc` compiles `src/**.ts` to `dist/**.js` but does NOT copy the sibling
+ * `contracts/deployed.json`, so a build run with `node dist/index.js` would
+ * otherwise never find the contract address and would silently degrade to
+ * unanchored placeholders — on-chain proof would only work when the app was
+ * started from source (tsx/jest). We probe the known candidate locations so the
+ * anchoring path is identical whether launched from `src` or `dist`, dev or prod.
+ */
+function resolveDeploymentPath(): string | null {
+  const candidates = [
+    path.join(__dirname, '../contracts/deployed.json'),            // src/services -> src/contracts, or dist/services -> dist/contracts
+    path.join(__dirname, '../../src/contracts/deployed.json'),     // dist/services -> src/contracts
+    path.join(__dirname, '../../../src/contracts/deployed.json'),  // deeper build layouts
+    path.join(process.cwd(), 'src/contracts/deployed.json'),
+    path.join(process.cwd(), 'dist/contracts/deployed.json'),
+    path.join(process.cwd(), 'contracts/deployed.json')
+  ];
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) return p;
+    } catch {}
+  }
+  return null;
+}
+
 export async function getBlockchainContract(): Promise<ethers.Contract | null> {
   if (contractInstance) return contractInstance;
 
   try {
-    const deploymentPath = path.join(__dirname, '../contracts/deployed.json');
-    if (!fs.existsSync(deploymentPath)) {
-      console.warn('Blockchain: deployed.json not found at', deploymentPath);
+    const deploymentPath = resolveDeploymentPath();
+    if (!deploymentPath) {
+      console.warn('Blockchain: deployed.json not found in any known location; on-chain anchoring disabled');
       return null;
     }
 
@@ -33,6 +60,20 @@ export async function getBlockchainContract(): Promise<ethers.Contract | null> {
 }
 
 let txQueue = Promise.resolve() as Promise<any>;
+
+/**
+ * Deterministic sender-nonce tracking.
+ *
+ * ethers' automatic nonce inference races under Hardhat's instant automining:
+ * two anchoring transactions queued back-to-back can both read the same pending
+ * count before either is mined, so the node rejects the second with
+ * `NONCE_EXPIRED / Nonce too low`. Because every write here is funnelled through
+ * the serialised `txQueue` above (one `doAnchor` runs at a time, and the previous
+ * receipt is already mined when the next begins), we can safely assign the nonce
+ * ourselves: seed it from the chain once, then advance strictly from each mined
+ * receipt. Any send failure re-seeds from `latest` to self-heal.
+ */
+let managedNonce: number | null = null;
 
 export interface AnchorResult {
   txHash: string;
@@ -54,34 +95,55 @@ async function doAnchor(rootHex: string): Promise<AnchorResult> {
   const contract = await getBlockchainContract();
   const bytes32Root = rootHex.startsWith('0x') ? rootHex : '0x' + rootHex;
 
+  // Honest PENDING placeholder: no on-chain proof exists yet. Callers MUST key
+  // off `anchored` and store null tx/block so nothing is misrepresented as sealed.
+  const pending = (): AnchorResult => ({
+    txHash: '0x' + require('crypto').createHash('sha256').update(bytes32Root + Date.now()).digest('hex'),
+    blockNumber: 0,
+    rootIndex: -1,
+    contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+    anchored: false
+  });
+
   if (!contract) {
-    console.warn('Blockchain: Hardhat node unreachable, returning SIMULATED (unanchored) placeholder');
-    const mockHash = '0x' + require('crypto').createHash('sha256').update(bytes32Root + Date.now()).digest('hex');
-    return {
-      txHash: mockHash,
-      blockNumber: 0,
-      rootIndex: -1,
-      contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
-      anchored: false
-    };
+    console.warn('Blockchain: contract handle unavailable, recording PENDING (not anchored)');
+    return pending();
   }
 
-  const tx = await contract.anchorRoot(bytes32Root);
-  const receipt = await tx.wait();
+  // A live contract handle does not prove the node is answering. Ping first; on
+  // outage we record a PENDING anchor rather than throwing, so an audit-batch or
+  // report submission degrades gracefully and is never mistaken for a breach.
+  if (!(await isBlockchainReachable())) {
+    console.warn('Blockchain: node unreachable at anchor time, recording PENDING (not anchored)');
+    return pending();
+  }
 
-  let rootIndex = 0;
   try {
-    const count = await contract.getRootCount();
-    rootIndex = Number(count) - 1;
-  } catch {}
+    const nonce = managedNonce ?? (await providerInstance!.getTransactionCount(walletInstance!.address, 'latest'));
+    const tx = await contract.anchorRoot(bytes32Root, { nonce });
+    const receipt: ethers.TransactionReceipt = await tx.wait();
+    // Mining succeeded: the next serialized send uses the immediately following nonce.
+    managedNonce = nonce + 1;
 
-  return {
-    txHash: receipt.hash,
-    blockNumber: receipt.blockNumber,
-    rootIndex,
-    contractAddress: await contract.getAddress(),
-    anchored: true
-  };
+    let rootIndex = 0;
+    try {
+      const count = await contract.getRootCount();
+      rootIndex = Number(count) - 1;
+    } catch {}
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      rootIndex,
+      contractAddress: await contract.getAddress(),
+      anchored: true
+    };
+  } catch (err: any) {
+    // Re-seed from the chain so a failed/replaced transaction cannot wedge the nonce.
+    managedNonce = null;
+    console.warn('Blockchain: anchor submission failed, recording PENDING (not anchored):', err?.shortMessage || err?.message);
+    return pending();
+  }
 }
 
 /**
@@ -101,11 +163,26 @@ export async function anchorRootOnChain(rootHex: string): Promise<AnchorResult> 
 }
 
 /**
- * Whether the anchoring smart contract is currently reachable.
- * Lets verifiers distinguish "node offline" from "root genuinely absent".
+ * Whether the anchoring blockchain node is ACTUALLY answering requests.
+ *
+ * Constructing an ethers contract handle does no network I/O, so a non-null
+ * contract only proves `deployed.json` was readable — it cannot distinguish a
+ * running node from a stopped one. We therefore issue a real RPC call; only a
+ * successful reply counts as reachable. Lets verifiers separate a genuine
+ * on-chain mismatch (root absent from a live chain) from a mere outage.
  */
 export async function isBlockchainReachable(): Promise<boolean> {
-  return (await getBlockchainContract()) !== null;
+  const contract = await getBlockchainContract();
+  if (!contract || !providerInstance) return false;
+  try {
+    await Promise.race([
+      providerInstance.send('eth_blockNumber', []),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('rpc timeout')), 3000))
+    ]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
