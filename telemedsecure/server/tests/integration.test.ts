@@ -377,8 +377,8 @@ describe('Step 12: Comprehensive Integration Test Suite', () => {
   // =========================================================================
   describe('5. Audit Hash-Chaining, Merkle Trees & Hardhat Blockchain Anchoring', () => {
     beforeAll(async () => {
-      // Ensure chain is clean before section 5 runs
-      await request(app).post('/api/v1/integrity/repair');
+      // Ensure chain is clean before section 5 runs (/integrity is ADMIN-gated)
+      await request(app).post('/api/v1/integrity/repair').set({ Authorization: `Bearer ${adminToken}` });
     });
 
     it('creates successive chained events with deterministic prevHash links', async () => {
@@ -426,8 +426,9 @@ describe('Step 12: Comprehensive Integration Test Suite', () => {
     });
 
     it('verifies audit chain integrity and reports valid chain status', async () => {
-      await request(app).post('/api/v1/integrity/repair');
-      const verifyRes = await request(app).get('/api/v1/integrity/verify');
+      const auth = { Authorization: `Bearer ${adminToken}` };
+      await request(app).post('/api/v1/integrity/repair').set(auth);
+      const verifyRes = await request(app).get('/api/v1/integrity/verify').set(auth);
       expect(verifyRes.status).toBe(200);
       expect(verifyRes.body.isValid).toBe(true);
       expect(verifyRes.body.status).toBe('VALID');
@@ -435,20 +436,21 @@ describe('Step 12: Comprehensive Integration Test Suite', () => {
     });
 
     it('detects tampering and chain break via /api/v1/integrity/tamper', async () => {
-      const tamperRes = await request(app).post('/api/v1/integrity/tamper');
+      const auth = { Authorization: `Bearer ${adminToken}` };
+      const tamperRes = await request(app).post('/api/v1/integrity/tamper').set(auth);
       expect(tamperRes.status).toBe(200);
       expect(tamperRes.body.tamperedEventId).toBeDefined();
 
-      const verifyRes = await request(app).get('/api/v1/integrity/verify');
+      const verifyRes = await request(app).get('/api/v1/integrity/verify').set(auth);
       expect(verifyRes.status).toBe(200);
       expect(verifyRes.body.status).toBe('TAMPERED');
       expect(verifyRes.body.isValid).toBe(false);
 
       // Restore chain
-      const repairRes = await request(app).post('/api/v1/integrity/repair');
+      const repairRes = await request(app).post('/api/v1/integrity/repair').set(auth);
       expect(repairRes.status).toBe(200);
 
-      const afterRepair = await request(app).get('/api/v1/integrity/verify');
+      const afterRepair = await request(app).get('/api/v1/integrity/verify').set(auth);
       expect(afterRepair.body.status).toBe('VALID');
       expect(afterRepair.body.isValid).toBe(true);
     });

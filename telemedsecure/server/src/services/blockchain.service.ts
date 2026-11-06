@@ -34,23 +34,35 @@ export async function getBlockchainContract(): Promise<ethers.Contract | null> {
 
 let txQueue = Promise.resolve() as Promise<any>;
 
-async function doAnchor(rootHex: string): Promise<{
+export interface AnchorResult {
   txHash: string;
   blockNumber: number;
   rootIndex: number;
   contractAddress: string;
-}> {
+  /**
+   * `true` only when the root was written to a live Solidity contract and a real
+   * transaction receipt was returned. `false` means the Hardhat node was
+   * unreachable and the values below are a LOCAL PLACEHOLDER, not on-chain
+   * proof. Callers MUST surface this so a report is never presented as
+   * "anchored to the blockchain" when it is not — that would be a false
+   * integrity guarantee.
+   */
+  anchored: boolean;
+}
+
+async function doAnchor(rootHex: string): Promise<AnchorResult> {
   const contract = await getBlockchainContract();
   const bytes32Root = rootHex.startsWith('0x') ? rootHex : '0x' + rootHex;
 
   if (!contract) {
-    console.warn('Blockchain: Hardhat node unreachable, simulating on-chain anchor');
+    console.warn('Blockchain: Hardhat node unreachable, returning SIMULATED (unanchored) placeholder');
     const mockHash = '0x' + require('crypto').createHash('sha256').update(bytes32Root + Date.now()).digest('hex');
     return {
       txHash: mockHash,
-      blockNumber: 1,
-      rootIndex: 0,
-      contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3'
+      blockNumber: 0,
+      rootIndex: -1,
+      contractAddress: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      anchored: false
     };
   }
 
@@ -67,19 +79,15 @@ async function doAnchor(rootHex: string): Promise<{
     txHash: receipt.hash,
     blockNumber: receipt.blockNumber,
     rootIndex,
-    contractAddress: await contract.getAddress()
+    contractAddress: await contract.getAddress(),
+    anchored: true
   };
 }
 
 /**
  * Anchor a 32-byte Merkle root on the Hardhat blockchain (sequentially queued to avoid nonce collision)
  */
-export async function anchorRootOnChain(rootHex: string): Promise<{
-  txHash: string;
-  blockNumber: number;
-  rootIndex: number;
-  contractAddress: string;
-}> {
+export async function anchorRootOnChain(rootHex: string): Promise<AnchorResult> {
   return new Promise((resolve, reject) => {
     txQueue = txQueue.then(async () => {
       try {
@@ -90,6 +98,14 @@ export async function anchorRootOnChain(rootHex: string): Promise<{
       }
     });
   });
+}
+
+/**
+ * Whether the anchoring smart contract is currently reachable.
+ * Lets verifiers distinguish "node offline" from "root genuinely absent".
+ */
+export async function isBlockchainReachable(): Promise<boolean> {
+  return (await getBlockchainContract()) !== null;
 }
 
 /**

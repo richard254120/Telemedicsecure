@@ -16,9 +16,10 @@ import { API_BASE } from '../config';
 
 interface VerificationResult {
   isValid: boolean;
-  status: 'AUTHENTIC_VERIFIED' | 'TAMPERED_OR_UNANCHORED';
+  status: 'AUTHENTIC_VERIFIED' | 'TAMPERED_OR_UNANCHORED' | 'UNVERIFIED_CHAIN_OFFLINE';
   computedHash: string;
   onChainAnchored: boolean;
+  onChainReachable?: boolean;
   blockNumber?: number | null;
   txHash?: string | null;
   reportDetails?: any | null;
@@ -88,6 +89,14 @@ export default function ReportVerification() {
       setIsVerifying(false);
     }
   };
+
+  const renderState = !result
+    ? null
+    : result.isValid
+      ? 'valid'
+      : result.status === 'UNVERIFIED_CHAIN_OFFLINE'
+        ? 'offline'
+        : 'invalid';
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-10 px-4 sm:px-6 lg:px-8">
@@ -168,23 +177,31 @@ export default function ReportVerification() {
         )}
 
         {/* Verification Result Card */}
-        {result && (
+        {result && renderState && (
           <div
-            className={`p-8 rounded-3xl border shadow-2xl transition space-y-6 ${result.isValid
-              ? 'bg-gradient-to-b from-emerald-950/30 via-slate-900 to-slate-950 border-emerald-500/40 shadow-emerald-950/40'
-              : 'bg-gradient-to-b from-red-950/30 via-slate-900 to-slate-950 border-red-500/40 shadow-red-950/40'
+            className={`p-8 rounded-3xl border shadow-2xl transition space-y-6 ${
+              renderState === 'valid'
+                ? 'bg-gradient-to-b from-emerald-950/30 via-slate-900 to-slate-950 border-emerald-500/40 shadow-emerald-950/40'
+                : renderState === 'offline'
+                  ? 'bg-gradient-to-b from-amber-950/30 via-slate-900 to-slate-950 border-amber-500/40 shadow-amber-950/40'
+                  : 'bg-gradient-to-b from-red-950/30 via-slate-900 to-slate-950 border-red-500/40 shadow-red-950/40'
               }`}
           >
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-6">
               <div className="flex items-center space-x-4">
                 <div
-                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${result.isValid
-                    ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                    : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                    }`}
+                  className={`w-14 h-14 rounded-2xl flex items-center justify-center ${
+                    renderState === 'valid'
+                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
+                      : renderState === 'offline'
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/40'
+                        : 'bg-red-500/20 text-red-400 border border-red-500/40'
+                  }`}
                 >
-                  {result.isValid ? (
+                  {renderState === 'valid' ? (
                     <CheckCircle2 className="w-8 h-8" />
+                  ) : renderState === 'offline' ? (
+                    <Lock className="w-8 h-8" />
                   ) : (
                     <AlertOctagon className="w-8 h-8" />
                   )}
@@ -192,10 +209,13 @@ export default function ReportVerification() {
                 <div>
                   <div className="flex items-center space-x-2">
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${result.isValid
-                        ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                        : 'bg-red-500/20 text-red-300 border border-red-500/30'
-                        }`}
+                      className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        renderState === 'valid'
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                          : renderState === 'offline'
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                            : 'bg-red-500/20 text-red-300 border border-red-500/30'
+                      }`}
                     >
                       {result.status}
                     </span>
@@ -204,9 +224,11 @@ export default function ReportVerification() {
                     </span>
                   </div>
                   <h2 className="text-xl font-bold text-white mt-1">
-                    {result.isValid
+                    {renderState === 'valid'
                       ? 'Authentic & Verified On Blockchain'
-                      : 'Verification Failed: Tampered or Forged Document'}
+                      : renderState === 'offline'
+                        ? 'Digest Matches Record — On-Chain Proof Pending'
+                        : 'Verification Failed: Tampered or Forged Document'}
                   </h2>
                 </div>
               </div>
@@ -214,10 +236,19 @@ export default function ReportVerification() {
               <div className="text-right">
                 <span className="text-xs text-slate-400 uppercase font-semibold">On-Chain Anchor</span>
                 <div
-                  className={`text-sm font-bold font-mono mt-0.5 ${result.onChainAnchored ? 'text-emerald-400' : 'text-red-400'
-                    }`}
+                  className={`text-sm font-bold font-mono mt-0.5 ${
+                    result.onChainAnchored
+                      ? 'text-emerald-400'
+                      : renderState === 'offline'
+                        ? 'text-amber-400'
+                        : 'text-red-400'
+                  }`}
                 >
-                  {result.onChainAnchored ? 'ANCHORED (FOUND)' : 'NOT ANCHORED (ABSENT)'}
+                  {result.onChainAnchored
+                    ? 'ANCHORED (FOUND)'
+                    : renderState === 'offline'
+                      ? 'NODE OFFLINE'
+                      : 'NOT ANCHORED (ABSENT)'}
                 </div>
               </div>
             </div>

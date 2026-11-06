@@ -36,6 +36,22 @@ export function computeAuditEventHash(event: {
 }
 
 /**
+ * Serialisation lock for hash-chain appends.
+ *
+ * The chain is a linked list: each event's prevHash MUST be the hash of the
+ * event that immediately precedes it in append order. `createChainedAuditEvent`
+ * reads the current tail, computes the new hash, then writes. Under concurrent
+ * requests two events can read the SAME tail and both link to it — a chain fork
+ * that later surfaces as a spurious TAMPERED verdict (or, worse, hides a real
+ * splice). We funnel every append through a single in-process queue so the
+ * read→compute→write critical section is atomic.
+ *
+ * NOTE: this guarantees ordering within one Node process. A multi-instance
+ * deployment must additionally use a DB advisory lock / serialisable transaction.
+ */
+let appendQueue: Promise<unknown> = Promise.resolve();
+
+/**
  * Create a new AuditEvent that is cryptographically chained to the previous event
  */
 export async function createChainedAuditEvent(data: {
@@ -46,48 +62,56 @@ export async function createChainedAuditEvent(data: {
   userAgent?: string | null;
   details?: any;
 }): Promise<AuditEvent> {
-  // 1. Fetch latest event in DB to establish the chain
-  const lastEvent = await prisma.auditEvent.findFirst({
-    orderBy: { timestamp: 'desc' }
-  });
+  // Enqueue the critical section behind any in-flight append.
+  const task = appendQueue.then(async () => {
+    // 1. Fetch latest event in DB to establish the chain
+    const lastEvent = await prisma.auditEvent.findFirst({
+      orderBy: [{ timestamp: 'desc' }, { id: 'desc' }]
+    });
 
-  const prevHash = lastEvent && lastEvent.hash ? lastEvent.hash : GENESIS_HASH;
-  const timestamp = new Date();
+    const prevHash = lastEvent && lastEvent.hash ? lastEvent.hash : GENESIS_HASH;
+    const timestamp = new Date();
 
-  let validUserId: string | null = null;
-  if (data.userId) {
-    try {
-      const user = await prisma.user.findUnique({ where: { id: data.userId } });
-      if (user) validUserId = data.userId;
-    } catch {}
-  }
+    let validUserId: string | null = null;
+    if (data.userId) {
+      try {
+        const user = await prisma.user.findUnique({ where: { id: data.userId } });
+        if (user) validUserId = data.userId;
+      } catch {}
+    }
 
-  // 2. Compute canonical SHA-256 hash
-  const hash = computeAuditEventHash({
-    action: data.action,
-    resource: data.resource,
-    prevHash,
-    userId: validUserId,
-    ipAddress: data.ipAddress,
-    userAgent: data.userAgent,
-    timestamp
-  });
-
-  // 3. Save to database
-  const event = await prisma.auditEvent.create({
-    data: {
+    // 2. Compute canonical SHA-256 hash
+    const hash = computeAuditEventHash({
       action: data.action,
       resource: data.resource,
+      prevHash,
       userId: validUserId,
       ipAddress: data.ipAddress,
       userAgent: data.userAgent,
-      timestamp,
-      prevHash,
-      hash
-    }
+      timestamp
+    });
+
+    // 3. Save to database
+    return prisma.auditEvent.create({
+      data: {
+        action: data.action,
+        resource: data.resource,
+        userId: validUserId,
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+        timestamp,
+        prevHash,
+        hash
+      }
+    });
   });
 
-  // 4. Check if unanchored events reach the threshold
+  // Keep the queue alive even if this append rejects, then release it.
+  appendQueue = task.catch(() => {});
+
+  const event = await task;
+
+  // 4. Check if unanchored events reach the threshold (outside the lock)
   checkAndTriggerAnchor().catch(err => console.error('Auto-anchor error:', err.message));
 
   return event;
@@ -98,7 +122,7 @@ export async function createChainedAuditEvent(data: {
  */
 export async function backfillChainIfEmpty(): Promise<number> {
   const allEvents = await prisma.auditEvent.findMany({
-    orderBy: { timestamp: 'asc' }
+    orderBy: [{ timestamp: 'asc' }, { id: 'asc' }]
   });
 
   let updatedCount = 0;
@@ -268,7 +292,7 @@ export interface ChainVerificationReport {
  */
 export async function verifyAuditChainAndMerkle(): Promise<ChainVerificationReport> {
   const events = await prisma.auditEvent.findMany({
-    orderBy: { timestamp: 'asc' }
+    orderBy: [{ timestamp: 'asc' }, { id: 'asc' }]
   });
 
   let runningPrevHash = GENESIS_HASH;
@@ -392,4 +416,71 @@ export function startPeriodicAnchoring() {
   periodicAnchorTimer = setInterval(() => {
     anchorAuditEventsNow().catch(err => console.error('Periodic anchor error:', err.message));
   }, ANCHOR_INTERVAL_MS);
+}
+
+export interface ChainRepairResult {
+  repairedCount: number;
+  tamperPreserved: boolean;
+  detectedBreak: ChainVerificationReport['brokenEvent'];
+  evidenceSnapshotId: string | null;
+  onChainSnapshot: boolean;
+}
+
+/**
+ * Evidence-preserving chain repair.
+ *
+ * A naive "repair" that simply recomputes hashes over tampered rows DESTROYS
+ * the forensic record: the altered event becomes indistinguishable from a
+ * legitimate one. Before recomputing, we seal proof of the break into
+ * append-only storage so non-repudiation survives the repair:
+ *
+ *   1. An `IntegrityVerification` snapshot (entityType AuditChainBreak) records
+ *      the tampered event id + expected vs stored hash. Repair never rewrites
+ *      these snapshot rows.
+ *   2. A chained audit event marker is appended to the live chain.
+ *
+ * The chain is then re-linked (backfill) so it verifies VALID again, but the
+ * tamper remains undeniable. Only used by ADMIN-gated endpoints.
+ */
+export async function repairAuditChain(): Promise<ChainRepairResult> {
+  const report = await verifyAuditChainAndMerkle();
+
+  let evidenceSnapshotId: string | null = null;
+
+  if (!report.isValid && report.brokenEvent) {
+    // 1. Seal an immutable snapshot of the break before touching the chain.
+    const snapshot = await prisma.integrityVerification.create({
+      data: {
+        entityType: 'AuditChainBreak',
+        entityId: `break:${report.brokenEvent.id}`,
+        merkleRoot: '0x' + report.brokenEvent.actualHash,
+        eventCount: report.totalEvents,
+        isValid: false
+      }
+    });
+    evidenceSnapshotId = snapshot.id;
+
+    // 2. Append an undeniable marker to the audit chain itself.
+    await createChainedAuditEvent({
+      action: 'AUDIT_CHAIN_TAMPER_SEALED_PRE_REPAIR',
+      resource: `AuditEvent:${report.brokenEvent.id}`,
+      details: {
+        reason: report.brokenEvent.reason,
+        expectedHash: report.brokenEvent.expectedHash,
+        storedHash: report.brokenEvent.actualHash,
+        snapshotId: snapshot.id
+      }
+    });
+  }
+
+  // 3. Re-link the chain forward (only fills/restores consistency; snapshot rows are untouched).
+  const repairedCount = await backfillChainIfEmpty();
+
+  return {
+    repairedCount,
+    tamperPreserved: Boolean(report.brokenEvent),
+    detectedBreak: report.brokenEvent,
+    evidenceSnapshotId,
+    onChainSnapshot: false
+  };
 }

@@ -3,8 +3,9 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import PDFDocument from 'pdfkit';
-import { anchorRootOnChain, isRootAnchoredOnChain } from './blockchain.service';
+import { anchorRootOnChain, isRootAnchoredOnChain, isBlockchainReachable } from './blockchain.service';
 import { verifyAuditChainAndMerkle, createChainedAuditEvent } from './audit.service';
+import { canonicalJson } from '../utils/crypto';
 
 const prisma = new PrismaClient();
 
@@ -158,12 +159,25 @@ export class InvestigationService {
   }): Promise<EvidenceFinding> {
     const { incidentId, description, evidenceType = 'LOG_EXTRACT', hashValue, metadata } = params;
 
-    const computedHash =
-      hashValue ||
-      crypto
-        .createHash('sha256')
-        .update(description + (metadata ? JSON.stringify(metadata) : ''))
-        .digest('hex');
+    // Authoritative integrity binding is ALWAYS computed server-side over the
+    // canonical evidence content. Trusting a caller-supplied digest would let an
+    // investigator attach a hash that does not correspond to the evidence, which
+    // breaks non-repudiation. Any externally-provided digest is preserved as
+    // metadata (`claimedArtifactHash`) for cross-referencing, never as the
+    // authoritative value.
+    const canonicalPayload = canonicalJson({
+      incidentId,
+      description,
+      evidenceType,
+      metadata: metadata ?? null
+    });
+    const computedHash = crypto.createHash('sha256').update(canonicalPayload).digest('hex');
+
+    const storedMetadata = {
+      ...(metadata && typeof metadata === 'object' ? metadata : metadata ? { detail: metadata } : {}),
+      ...(hashValue ? { claimedArtifactHash: hashValue } : {}),
+      canonicalPayloadDigest: computedHash
+    };
 
     const finding = await prisma.evidenceFinding.create({
       data: {
@@ -171,14 +185,14 @@ export class InvestigationService {
         description,
         evidenceType,
         hashValue: computedHash,
-        metadata: metadata ? JSON.stringify(metadata) : null,
-      },
+        metadata: JSON.stringify(storedMetadata)
+      }
     });
 
     await createChainedAuditEvent({
       action: 'EVIDENCE_FINDING_ATTACHED',
       resource: `Evidence:${finding.id}`,
-      details: { incidentId, evidenceType, hashValue: computedHash },
+      details: { incidentId, evidenceType, hashValue: computedHash, claimedArtifactHash: hashValue || null }
     });
 
     return finding;
@@ -198,6 +212,7 @@ export class InvestigationService {
     reportHash: string;
     txHash: string;
     blockNumber: number;
+    anchored: boolean;
     chainVerification: any;
   }> {
     const { incidentId, investigator = 'Security Officer / Lead Forensics', summaryNotes } = params;
@@ -232,6 +247,8 @@ export class InvestigationService {
     // 4. Anchor report hash on-chain via Solidity smart contract
     console.log(`[ForensicReport] Anchoring report hash on blockchain: ${reportHash0x}`);
     const onChainAnchor = await anchorRootOnChain(reportHash0x);
+    // Honest anchoring state: true ONLY if the contract actually wrote the root.
+    const anchored = onChainAnchor.anchored;
 
     // 5. Save PDF file to storage
     const reportId = crypto.randomUUID();
@@ -249,8 +266,12 @@ export class InvestigationService {
         severity: incident.severity,
         investigator,
         reportHash: reportHash0x,
-        txHash: onChainAnchor.txHash,
-        blockNumber: onChainAnchor.blockNumber,
+        // Only persist an on-chain tx/block when the contract actually wrote it.
+        // When the node was offline we store null rather than a fabricated
+        // placeholder, so the database never misrepresents an unsealed report as
+        // anchored. A later anchoring pass can fill these in once reachable.
+        txHash: anchored ? onChainAnchor.txHash : null,
+        blockNumber: anchored ? onChainAnchor.blockNumber : null,
         chainValid: chainVerification.isValid,
         pdfPath: `/storage/reports/${fileName}`,
       },
@@ -271,6 +292,7 @@ export class InvestigationService {
         reportHash: reportHash0x,
         txHash: onChainAnchor.txHash,
         blockNumber: onChainAnchor.blockNumber,
+        anchored
       },
     });
 
@@ -280,6 +302,7 @@ export class InvestigationService {
       reportHash: reportHash0x,
       txHash: onChainAnchor.txHash,
       blockNumber: onChainAnchor.blockNumber,
+      anchored,
       chainVerification,
     };
   }
@@ -289,9 +312,10 @@ export class InvestigationService {
    */
   public async verifyReportPdf(pdfBuffer: Buffer): Promise<{
     isValid: boolean;
-    status: 'AUTHENTIC_VERIFIED' | 'TAMPERED_OR_UNANCHORED';
+    status: 'AUTHENTIC_VERIFIED' | 'TAMPERED_OR_UNANCHORED' | 'UNVERIFIED_CHAIN_OFFLINE';
     computedHash: string;
     onChainAnchored: boolean;
+    onChainReachable: boolean;
     blockNumber?: number | null;
     txHash?: string | null;
     reportDetails?: ForensicReport | null;
@@ -301,8 +325,14 @@ export class InvestigationService {
     const computedHash = crypto.createHash('sha256').update(pdfBuffer).digest('hex');
     const computedHash0x = computedHash.startsWith('0x') ? computedHash : `0x${computedHash}`;
 
+    // 0. Distinguish "node offline" from "root genuinely absent" so an authentic
+    //    report is never falsely accused of being forged during an outage.
+    const onChainReachable = await isBlockchainReachable();
+
     // 1. Check if hash exists in smart contract on Ethereum / Hardhat chain
-    const onChainAnchored = await isRootAnchoredOnChain(computedHash0x);
+    const onChainAnchored = onChainReachable
+      ? await isRootAnchoredOnChain(computedHash0x)
+      : false;
 
     // 2. Query matching forensic report in database
     const matchingReport = await prisma.forensicReport.findFirst({
@@ -310,19 +340,37 @@ export class InvestigationService {
       include: { incident: true },
     });
 
-    const isValid = onChainAnchored && Boolean(matchingReport);
+    let status: 'AUTHENTIC_VERIFIED' | 'TAMPERED_OR_UNANCHORED' | 'UNVERIFIED_CHAIN_OFFLINE';
+    let reason: string;
+    let isValid: boolean;
+
+    if (matchingReport && onChainAnchored) {
+      isValid = true;
+      status = 'AUTHENTIC_VERIFIED';
+      reason = 'Report cryptographic checksum verified against immutable blockchain anchor.';
+    } else if (!onChainReachable && matchingReport) {
+      // Digest matches a stored report but the anchoring node is unreachable:
+      // we can confirm the file is unaltered vs. our DB record, but CANNOT yet
+      // prove the on-chain seal. Report this honestly instead of as tampering.
+      isValid = false;
+      status = 'UNVERIFIED_CHAIN_OFFLINE';
+      reason = 'SHA-256 digest matches a stored forensic report, but the anchoring blockchain node is currently unreachable — on-chain authenticity could not be confirmed at this time. Re-verify once the node is back online.';
+    } else {
+      isValid = false;
+      status = 'TAMPERED_OR_UNANCHORED';
+      reason = 'The SHA-256 hash of this PDF does not match any anchored forensic report. The document has been altered, forged, or was never sealed.';
+    }
 
     return {
       isValid,
-      status: isValid ? 'AUTHENTIC_VERIFIED' : 'TAMPERED_OR_UNANCHORED',
+      status,
       computedHash: computedHash0x,
       onChainAnchored,
+      onChainReachable,
       blockNumber: matchingReport?.blockNumber || null,
       txHash: matchingReport?.txHash || null,
       reportDetails: matchingReport || null,
-      reason: isValid
-        ? 'Report cryptographic checksum verified against immutable blockchain anchor.'
-        : 'The SHA-256 hash of this PDF does not match any anchored forensic report on the blockchain. The document has been altered or tampered with.',
+      reason,
       verifiedAt: new Date().toISOString(),
     };
   }
@@ -432,8 +480,8 @@ export class InvestigationService {
       doc.fontSize(8).font('Helvetica-Bold').fillColor('#38bdf8')
         .text('BLOCKCHAIN INTEGRITY SEAL • HARDHAT AUDIT ANCHOR', 50, 750);
       doc.fontSize(7).font('Helvetica').fillColor('#cbd5e1')
-        .text('This document contains an immutable SHA-256 seal anchored to the Solidity smart contract.', 50, 762);
-      doc.text('Verify authenticity by uploading this PDF at /investigation/verify.', 50, 774);
+        .text('This document carries an immutable SHA-256 seal anchored to the Solidity smart contract.', 50, 762);
+      doc.text('Verify authenticity (and confirm the on-chain seal) by uploading this PDF at /investigation/verify.', 50, 774);
 
       doc.end();
     });

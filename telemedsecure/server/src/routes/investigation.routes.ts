@@ -214,6 +214,17 @@ router.post(
 
     try {
       const verification = await investigationService.verifyReportPdf(pdfBuffer);
+
+      // CONFIDENTIALITY: a report's associated case (title, investigator,
+      // target user/patient, timeline) must only be disclosed to investigators.
+      // Any authenticated user verifying a document's authenticity receives the
+      // cryptographic verdict only, not the case file.
+      const user = (req as any).user;
+      const isAdmin = user?.role === Role.ADMIN;
+      if (!isAdmin && verification.reportDetails) {
+        return res.json({ ...verification, reportDetails: null });
+      }
+
       res.json(verification);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

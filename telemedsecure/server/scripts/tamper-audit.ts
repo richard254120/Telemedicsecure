@@ -62,10 +62,12 @@ async function main() {
     console.log(`  Stored Hash:    ${afterReport.brokenEvent.actualHash}`);
   }
   console.log('======================================================\n');
-  console.log('To view this in your browser or test via API:');
-  console.log('  curl http://localhost:4000/api/v1/integrity/verify\n');
-  console.log('To repair the chain after your demo:');
-  console.log('  curl -X POST http://localhost:4000/api/v1/integrity/repair\n');
+  console.log('The /integrity surface is ADMIN-gated. Mint an admin token, then:');
+  console.log('  TOKEN=$(curl -s -X POST http://localhost:4000/api/v1/auth/quick-login \\');
+  console.log('    -H "Content-Type: application/json" -d \'{"role":"ADMIN"}\' | jq -r .accessToken)');
+  console.log('  curl -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1/integrity/verify\n');
+  console.log('To evidence-presingly repair the chain after your demo:');
+  console.log('  curl -X POST -H "Authorization: Bearer $TOKEN" http://localhost:4000/api/v1/integrity/repair\n');
 }
 
 main()

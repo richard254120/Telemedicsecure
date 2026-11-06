@@ -261,15 +261,23 @@ export interface ChainedAuditEventItem {
   hash: string;
 }
 
+// All /integrity endpoints are ADMIN-gated on the server (CIA hardening), so the
+// bearer token must be attached to every forensic request.
+const authHeader = (): Record<string, string> => {
+  const token = getToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 export async function verifyAuditIntegrity(): Promise<AuditVerificationReport> {
-  const res = await fetch(`${API_BASE}/integrity/verify`);
+  const res = await fetch(`${API_BASE}/integrity/verify`, { headers: authHeader() });
   if (!res.ok) throw new Error('Failed to verify audit integrity');
   return res.json();
 }
 
 export async function triggerOnChainAnchor() {
   const res = await fetch(`${API_BASE}/integrity/anchor`, {
-    method: 'POST'
+    method: 'POST',
+    headers: authHeader()
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to anchor on-chain');
@@ -279,7 +287,7 @@ export async function triggerOnChainAnchor() {
 export async function tamperAuditEvent() {
   const res = await fetch(`${API_BASE}/integrity/tamper`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
     body: JSON.stringify({})
   });
   const data = await res.json();
@@ -289,7 +297,8 @@ export async function tamperAuditEvent() {
 
 export async function repairAuditChain() {
   const res = await fetch(`${API_BASE}/integrity/repair`, {
-    method: 'POST'
+    method: 'POST',
+    headers: authHeader()
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to repair chain');
@@ -297,7 +306,7 @@ export async function repairAuditChain() {
 }
 
 export async function getChainedAuditEvents(): Promise<ChainedAuditEventItem[]> {
-  const res = await fetch(`${API_BASE}/integrity/events?limit=25`);
+  const res = await fetch(`${API_BASE}/integrity/events?limit=25`, { headers: authHeader() });
   if (!res.ok) throw new Error('Failed to fetch audit events');
   return res.json();
 }

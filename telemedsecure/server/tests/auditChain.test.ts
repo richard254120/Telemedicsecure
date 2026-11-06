@@ -15,9 +15,18 @@ import { anchorRootOnChain, getRootFromChain, isRootAnchoredOnChain } from '../s
 const prisma = new PrismaClient();
 
 describe('Step 8: Hash-Chained AuditEvents, Merkle Trees & Blockchain Anchoring', () => {
+  let adminToken: string;
+  const auth = () => ({ Authorization: `Bearer ${adminToken}` });
+
   beforeAll(async () => {
     // Backfill any existing un-hashed events
     await backfillChainIfEmpty();
+
+    // /integrity endpoints are ADMIN-gated (CIA hardening) — obtain a token.
+    const adminRes = await request(app)
+      .post('/api/v1/auth/quick-login')
+      .send({ role: 'ADMIN' });
+    adminToken = adminRes.body.accessToken;
   });
 
   afterAll(async () => {
@@ -117,12 +126,19 @@ describe('Step 8: Hash-Chained AuditEvents, Merkle Trees & Blockchain Anchoring'
   });
 
   describe('Integrity Verification API Endpoints', () => {
+    it('rejects unauthenticated access to the forensic integrity surface (401)', async () => {
+      const res = await request(app).get('/api/v1/integrity/verify');
+      expect(res.status).toBe(401);
+      const events = await request(app).get('/api/v1/integrity/events');
+      expect(events.status).toBe(401);
+    });
+
     it('anchors audit events via POST /api/v1/integrity/anchor', async () => {
       // Create a few events to ensure unanchored events exist
       await createChainedAuditEvent({ action: 'PRE_ANCHOR_1', resource: 'Test:1' });
       await createChainedAuditEvent({ action: 'PRE_ANCHOR_2', resource: 'Test:2' });
 
-      const res = await request(app).post('/api/v1/integrity/anchor');
+      const res = await request(app).post('/api/v1/integrity/anchor').set(auth());
       expect(res.status).toBe(200);
 
       if (res.body.anchored) {
@@ -132,7 +148,7 @@ describe('Step 8: Hash-Chained AuditEvents, Merkle Trees & Blockchain Anchoring'
     });
 
     it('verifies the audit chain and reports VALID when un-tampered', async () => {
-      const res = await request(app).get('/api/v1/integrity/verify');
+      const res = await request(app).get('/api/v1/integrity/verify').set(auth());
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('VALID');
@@ -143,12 +159,12 @@ describe('Step 8: Hash-Chained AuditEvents, Merkle Trees & Blockchain Anchoring'
 
     it('detects tampering and reports TAMPERED when a database row is modified', async () => {
       // 1. Trigger tamper simulation
-      const tamperRes = await request(app).post('/api/v1/integrity/tamper');
+      const tamperRes = await request(app).post('/api/v1/integrity/tamper').set(auth());
       expect(tamperRes.status).toBe(200);
       expect(tamperRes.body.tamperedEventId).toBeDefined();
 
       // 2. Run verification job: should now report TAMPERED and identify the broken event!
-      const verifyRes = await request(app).get('/api/v1/integrity/verify');
+      const verifyRes = await request(app).get('/api/v1/integrity/verify').set(auth());
       expect(verifyRes.status).toBe(200);
       expect(verifyRes.body.status).toBe('TAMPERED');
       expect(verifyRes.body.isValid).toBe(false);
@@ -157,11 +173,11 @@ describe('Step 8: Hash-Chained AuditEvents, Merkle Trees & Blockchain Anchoring'
       expect(verifyRes.body.brokenEvent.id).toBe(tamperRes.body.tamperedEventId);
 
       // 3. Repair the chain to return to healthy state
-      const repairRes = await request(app).post('/api/v1/integrity/repair');
+      const repairRes = await request(app).post('/api/v1/integrity/repair').set(auth());
       expect(repairRes.status).toBe(200);
 
       // 4. Verify healthy state restored
-      const afterRepair = await request(app).get('/api/v1/integrity/verify');
+      const afterRepair = await request(app).get('/api/v1/integrity/verify').set(auth());
       expect(afterRepair.body.status).toBe('VALID');
       expect(afterRepair.body.isValid).toBe(true);
     });
