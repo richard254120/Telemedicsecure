@@ -25,6 +25,33 @@ const fontSize = {
   '9xl': ['9rem', { lineHeight: '1' }],         // 144px
 };
 
+// Theme colour tokens.
+//
+// ~2,900 slate/white/black utilities are written dark-first across 47
+// components (bg-slate-900, text-slate-100, text-white…) and the dashboards
+// ship no `dark:` variants, so per-file editing is not viable. Instead the
+// neutral ramps resolve to CSS variables defined in src/index.css:
+// `html.dark` carries Tailwind's stock slate values (pixel-identical to the
+// current design) and `html.light` carries the inverted ramp, so every
+// surface, border and text tone re-themes from one place when the theme
+// toggle flips the class on <html>. Declared as space-separated RGB
+// triplets so Tailwind's alpha modifiers (`bg-slate-800/70`) keep working.
+const withVar = (name) => `rgb(var(${name}) / <alpha-value>)`;
+const neutrals = (prefix) => ({
+  50: withVar(`--${prefix}-50`),
+  100: withVar(`--${prefix}-100`),
+  200: withVar(`--${prefix}-200`),
+  300: withVar(`--${prefix}-300`),
+  400: withVar(`--${prefix}-400`),
+  500: withVar(`--${prefix}-500`),
+  600: withVar(`--${prefix}-600`),
+  700: withVar(`--${prefix}-700`),
+  800: withVar(`--${prefix}-800`),
+  850: withVar(`--${prefix}-850`),
+  900: withVar(`--${prefix}-900`),
+  950: withVar(`--${prefix}-950`),
+});
+
 export default {
   darkMode: 'class', // enable class-based dark mode
   content: [
@@ -34,6 +61,14 @@ export default {
   theme: {
     extend: {
       fontSize,
+      colors: {
+        slate: neutrals('slate'),
+        // `gray` aliases slate so the few stray gray-* call sites follow the
+        // same theme variables.
+        gray: neutrals('slate'),
+        white: withVar('--color-white'),
+        black: withVar('--color-black'),
+      },
     },
   },
   plugins: [],

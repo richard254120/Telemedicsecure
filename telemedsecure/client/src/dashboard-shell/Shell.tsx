@@ -18,6 +18,7 @@ import { formatAge, initialsOf } from './format';
 import { useNow } from './hooks/useNow';
 import { ACCENTS, type NavTab, type ShellProps } from './types';
 import { Button } from './ui';
+import ThemeToggle from '../components/ThemeToggle';
 
 function NavList({
   nav,
@@ -237,6 +238,9 @@ const Shell: React.FC<ShellProps> = ({
                 </Button>
               )}
               {headerActions}
+
+              {/* Whole-page dark / light switch, present on every station. */}
+              <ThemeToggle />
 
               <div className="relative" onClick={event => event.stopPropagation()}>
                 <button

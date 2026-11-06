@@ -463,7 +463,7 @@ export default function Login() {
           >
             <Ticket className="w-4 h-4 text-amber-300" />
             <span className="text-[11px]">Invite Token</span>
-            <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-amber-500 text-[8px] text-slate-950 font-black rounded-full uppercase">
+            <span className="absolute -top-1 -right-1 px-1.5 py-0.2 bg-amber-500 text-[8px] text-[#0f172a] font-black rounded-full uppercase">
               5m
             </span>
           </button>

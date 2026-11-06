@@ -5,6 +5,57 @@
 @tailwind utilities;
 
 @layer base {
+  /* -------------------------------------------------------------- *
+   * Theme tokens. `html.dark` holds Tailwind's stock slate ramp so
+   * the existing dark design renders pixel-identical; `html.light`
+   * inverts the ramp (900 -> surfaces become near-white, 100 ->
+   * text becomes near-black) so the ~2,900 dark-first slate/white
+   * utilities across the app re-theme with zero component edits.
+   * Values are space-separated RGB triplets consumed by
+   * tailwind.config.js as `rgb(var(--x) / <alpha-value>)`.
+   * -------------------------------------------------------------- */
+  html.dark {
+    color-scheme: dark;
+    --slate-50: 248 250 252;
+    --slate-100: 241 245 249;
+    --slate-200: 226 232 240;
+    --slate-300: 203 213 225;
+    --slate-400: 148 163 184;
+    --slate-500: 100 116 139;
+    --slate-600: 71 85 105;
+    --slate-700: 51 65 85;
+    --slate-800: 30 41 59;
+    --slate-850: 26 36 52;
+    --slate-900: 15 23 42;
+    --slate-950: 2 6 23;
+    --color-white: 255 255 255;
+    --color-black: 0 0 0;
+  }
+
+  html.light {
+    color-scheme: light;
+    --slate-50: 2 6 23;
+    --slate-100: 15 23 42;
+    --slate-200: 30 41 59;
+    --slate-300: 51 65 85;
+    --slate-400: 71 85 105;
+    --slate-500: 100 116 139;
+    --slate-600: 148 163 184;
+    --slate-700: 203 213 225;
+    --slate-800: 241 245 249;
+    --slate-850: 246 248 251;
+    --slate-900: 248 250 252;
+    --slate-950: 252 253 254;
+    /* `text-white` is the dark theme's on-surface heading/button colour,
+       so it flips to near-black on the light page. Full-strength chromatic
+       buttons keep true white via the scoped rule below. */
+    --color-white: 15 23 42;
+    --color-black: 248 250 252;
+  }
+
+  /* Fallback when no theme class has been applied yet (the inline script
+     in index.html sets it before first paint, so this is only a safety
+     net and matches the historical dark-only behaviour). */
   :root {
     color-scheme: dark;
   }
@@ -14,7 +65,7 @@
   }
 
   body {
-    @apply bg-white text-gray-900 dark:bg-slate-900 dark:text-slate-100 min-h-screen antialiased selection:bg-cyan-500 selection:text-white;
+    @apply bg-slate-900 text-slate-100 min-h-screen antialiased selection:bg-cyan-500 selection:text-white;
   }
 
   code, pre, .font-mono {
@@ -36,35 +87,160 @@
 .text-\[10px\] { font-size: 0.9375rem !important; line-height: 1.4; } /* 15px */
 .text-\[11px\] { font-size: 1rem      !important; line-height: 1.4; } /* 16px */
 
-/* Custom Scrollbars */
+/* -------------------------------------------------------------- *
+ * Light-mode contrast for the CTA ramp. Buttons painted with a
+ * full-strength chromatic background (bg-cyan-600,
+ * from-emerald-600 to-teal-600…) pair it with `text-white`, which
+ * the token above flips to near-black — correct on slate surfaces
+ * (they invert with the theme) but unreadable on the saturated
+ * colour, which keeps its hue in both modes. This re-forces true
+ * white on exactly those elements. Alpha chips (`bg-*-500/15`)
+ * deliberately do NOT match — their tint inverts to a pale wash,
+ * where the token's near-black text is right.
+ * -------------------------------------------------------------- */
+/* Solid/gradient chromatic CTAs pair `text-white` with a full-strength
+   colour that keeps its hue in light mode, so true white must survive
+   the --color-white flip. `[class~="bg-hue-N"]` matches the exact class
+   token only — unlike [class*=] it will not catch `bg-hue-500/20` tints,
+   whose pale wash the token's near-black text is correct on. */
+html.light *:is(
+  [class~="bg-cyan-500"], [class~="bg-cyan-600"],
+  [class~="bg-emerald-500"], [class~="bg-emerald-600"],
+  [class~="bg-teal-500"], [class~="bg-teal-600"],
+  [class~="bg-blue-500"], [class~="bg-blue-600"], [class~="bg-blue-700"],
+  [class~="bg-purple-500"], [class~="bg-purple-600"], [class~="bg-purple-700"],
+  [class~="bg-indigo-500"], [class~="bg-indigo-600"],
+  [class~="bg-amber-500"], [class~="bg-amber-600"],
+  [class~="bg-red-500"], [class~="bg-red-600"],
+  [class~="bg-rose-500"], [class~="bg-rose-600"],
+  [class~="bg-orange-500"], [class~="bg-orange-600"],
+  [class~="bg-violet-600"], [class~="bg-pink-600"], [class~="bg-sky-600"],
+  [class~="bg-green-600"], [class~="bg-yellow-600"],
+  [class*="from-cyan-"], [class*="from-emerald-"], [class*="from-teal-"],
+  [class*="from-blue-"], [class*="from-purple-"], [class*="from-indigo-"],
+  [class*="from-amber-"], [class*="from-red-"], [class*="from-rose-"],
+  [class*="from-orange-"], [class*="from-violet-"], [class*="from-pink-"],
+  [class*="to-cyan-"], [class*="to-emerald-"], [class*="to-teal-"],
+  [class*="to-blue-"], [class*="to-purple-"], [class*="to-indigo-"],
+  [class*="to-amber-"], [class*="to-red-"], [class*="to-rose-"],
+  [class*="to-orange-"]
+)[class*="text-white"] {
+  color: #fff !important;
+}
+
+/* -------------------------------------------------------------- *
+ * Light-mode accent ramp. The UI's status/brand chips pair pale
+ * accent text (text-{hue}-100..400 — ~850 call sites) with alpha
+ * tints (bg-{hue}-500/15) designed for the dark backdrop; on the
+ * light page the tint becomes a correct pale wash but cyan-300-on-
+ * white lands at 1.4:1. Under `.light` the pale text shades remap
+ * to the same hue's 700, which restores the dark-mode contrast
+ * pairing against the tint. Solid chromatic CTAs are excluded —
+ * the rule above owns their `text-white` — and hues are enumerated
+ * once each so no component file needs per-mode variants.
+ * -------------------------------------------------------------- */
+/* Each hue once: any pale text shade of it (class contains the shade
+   prefix 1xx/2xx/3xx/4xx) becomes the hue's 800 — the 700s land at
+   3.x:1 against their own tints, the 800s clear WCAG AA on both the
+   near-white page and the pale wash. Only elements whose own class
+   carries an exact solid chromatic background token (CTAs, owned by
+   the rule above) are skipped; `[class~=]` deliberately does NOT
+   match `bg-hue-500/20` tints. 50/600 text shades have no matching
+   substring and stay untouched (already readable on white). */
+html.light *:is([class*="text-cyan-1"], [class*="text-cyan-2"], [class*="text-cyan-3"], [class*="text-cyan-4"]):not(:is([class~="bg-cyan-500"], [class~="bg-cyan-600"], [class*="from-cyan-"], [class*="to-cyan-"])) { color: rgb(21 94 117) !important; } /* cyan-800 */
+html.light *:is([class*="text-emerald-1"], [class*="text-emerald-2"], [class*="text-emerald-3"], [class*="text-emerald-4"]):not(:is([class~="bg-emerald-500"], [class~="bg-emerald-600"], [class*="from-emerald-"], [class*="to-emerald-"])) { color: rgb(6 95 70) !important; } /* emerald-800 */
+html.light *:is([class*="text-teal-1"], [class*="text-teal-2"], [class*="text-teal-3"], [class*="text-teal-4"]):not(:is([class~="bg-teal-500"], [class~="bg-teal-600"], [class*="from-teal-"], [class*="to-teal-"])) { color: rgb(17 89 86) !important; } /* teal-800 */
+html.light *:is([class*="text-blue-1"], [class*="text-blue-2"], [class*="text-blue-3"], [class*="text-blue-4"]):not(:is([class~="bg-blue-500"], [class~="bg-blue-600"], [class*="from-blue-"], [class*="to-blue-"])) { color: rgb(30 64 175) !important; } /* blue-800 */
+html.light *:is([class*="text-indigo-1"], [class*="text-indigo-2"], [class*="text-indigo-3"], [class*="text-indigo-4"]):not(:is([class~="bg-indigo-500"], [class~="bg-indigo-600"], [class*="from-indigo-"], [class*="to-indigo-"])) { color: rgb(55 48 163) !important; } /* indigo-800 */
+html.light *:is([class*="text-purple-1"], [class*="text-purple-2"], [class*="text-purple-3"], [class*="text-purple-4"]):not(:is([class~="bg-purple-500"], [class~="bg-purple-600"], [class*="from-purple-"], [class*="to-purple-"])) { color: rgb(107 33 168) !important; } /* purple-800 */
+html.light *:is([class*="text-violet-1"], [class*="text-violet-2"], [class*="text-violet-3"], [class*="text-violet-4"]):not(:is([class~="bg-violet-500"], [class~="bg-violet-600"], [class*="from-violet-"], [class*="to-violet-"])) { color: rgb(91 33 182) !important; } /* violet-800 */
+html.light *:is([class*="text-amber-1"], [class*="text-amber-2"], [class*="text-amber-3"], [class*="text-amber-4"]):not(:is([class~="bg-amber-500"], [class~="bg-amber-600"], [class*="from-amber-"], [class*="to-amber-"])) { color: rgb(131 56 23) !important; } /* amber-800 */
+html.light *:is([class*="text-orange-1"], [class*="text-orange-2"], [class*="text-orange-3"], [class*="text-orange-4"]):not(:is([class~="bg-orange-500"], [class~="bg-orange-600"], [class*="from-orange-"], [class*="to-orange-"])) { color: rgb(154 52 18) !important; } /* orange-800 */
+html.light *:is([class*="text-red-1"], [class*="text-red-2"], [class*="text-red-3"], [class*="text-red-4"]):not(:is([class~="bg-red-500"], [class~="bg-red-600"], [class*="from-red-"], [class*="to-red-"])) { color: rgb(154 26 26) !important; } /* red-800 */
+html.light *:is([class*="text-rose-1"], [class*="text-rose-2"], [class*="text-rose-3"], [class*="text-rose-4"]):not(:is([class~="bg-rose-500"], [class~="bg-rose-600"], [class*="from-rose-"], [class*="to-rose-"])) { color: rgb(159 18 57) !important; } /* rose-800 */
+html.light *:is([class*="text-pink-1"], [class*="text-pink-2"], [class*="text-pink-3"], [class*="text-pink-4"]):not(:is([class~="bg-pink-500"], [class~="bg-pink-600"], [class*="from-pink-"], [class*="to-pink-"])) { color: rgb(157 23 77) !important; } /* pink-800 */
+html.light *:is([class*="text-fuchsia-1"], [class*="text-fuchsia-2"], [class*="text-fuchsia-3"], [class*="text-fuchsia-4"]):not(:is([class~="bg-fuchsia-500"], [class~="bg-fuchsia-600"], [class*="from-fuchsia-"], [class*="to-fuchsia-"])) { color: rgb(134 25 143) !important; } /* fuchsia-800 */
+html.light *:is([class*="text-sky-1"], [class*="text-sky-2"], [class*="text-sky-3"], [class*="text-sky-4"]):not(:is([class~="bg-sky-500"], [class~="bg-sky-600"], [class*="from-sky-"], [class*="to-sky-"])) { color: rgb(7 89 133) !important; } /* sky-800 */
+html.light *:is([class*="text-green-1"], [class*="text-green-2"], [class*="text-green-3"], [class*="text-green-4"]):not(:is([class~="bg-green-500"], [class~="bg-green-600"], [class*="from-green-"], [class*="to-green-"])) { color: rgb(22 101 52) !important; } /* green-800 */
+html.light *:is([class*="text-lime-1"], [class*="text-lime-2"], [class*="text-lime-3"], [class*="text-lime-4"]):not(:is([class~="bg-lime-500"], [class~="bg-lime-600"], [class*="from-lime-"], [class*="to-lime-"])) { color: rgb(63 98 18) !important; } /* lime-800 */
+html.light *:is([class*="text-yellow-1"], [class*="text-yellow-2"], [class*="text-yellow-3"], [class*="text-yellow-4"]):not(:is([class~="bg-yellow-500"], [class~="bg-yellow-600"], [class*="from-yellow-"], [class*="to-yellow-"])) { color: rgb(131 68 7) !important; } /* yellow-800 */
+
+/* -------------------------------------------------------------- *
+ * Light-mode alert/callout wells. Dark UIs paint warnings and
+ * toasts with a near-black hue wash (bg-{hue}-950/40) plus pale
+ * text; on the light page that composites to a muddy grey-brown
+ * (2.5:1 callouts on /login). Swap the well for a 12% hue wash
+ * and let the hue-800/900 text rules above land on it.
+ * `--light-hue` is set by the per-hue match just like the text
+ * ramp, so the wash carries the right colour into color-mix.
+ * -------------------------------------------------------------- */
+html.light *[class*="bg-amber-950"]   { --light-hue: #f59e0b; } html.light *[class*="bg-amber-900"]   { --light-hue: #f59e0b; }
+html.light *[class*="bg-red-950"]     { --light-hue: #ef4444; } html.light *[class*="bg-red-900"]     { --light-hue: #ef4444; }
+html.light *[class*="bg-rose-950"]    { --light-hue: #f43f5e; } html.light *[class*="bg-rose-900"]    { --light-hue: #f43f5e; }
+html.light *[class*="bg-emerald-950"] { --light-hue: #10b981; } html.light *[class*="bg-emerald-900"] { --light-hue: #10b981; }
+html.light *[class*="bg-green-950"]   { --light-hue: #22c55e; } html.light *[class*="bg-green-900"]   { --light-hue: #22c55e; }
+html.light *[class*="bg-cyan-950"]    { --light-hue: #06b6d4; } html.light *[class*="bg-cyan-900"]    { --light-hue: #06b6d4; }
+html.light *[class*="bg-teal-950"]    { --light-hue: #14b8a6; } html.light *[class*="bg-teal-900"]    { --light-hue: #14b8a6; }
+html.light *[class*="bg-blue-950"]    { --light-hue: #3b82f6; } html.light *[class*="bg-blue-900"]    { --light-hue: #3b82f6; }
+html.light *[class*="bg-indigo-950"]  { --light-hue: #6366f1; } html.light *[class*="bg-indigo-900"]  { --light-hue: #6366f1; }
+html.light *[class*="bg-purple-950"]  { --light-hue: #a855f7; } html.light *[class*="bg-purple-900"]  { --light-hue: #a855f7; }
+html.light *[class*="bg-violet-950"]  { --light-hue: #8b5cf6; } html.light *[class*="bg-violet-900"]  { --light-hue: #8b5cf6; }
+html.light *[class*="bg-orange-950"]  { --light-hue: #f97316; } html.light *[class*="bg-orange-900"]  { --light-hue: #f97316; }
+html.light *[class*="bg-sky-950"]     { --light-hue: #0ea5e9; } html.light *[class*="bg-sky-900"]     { --light-hue: #0ea5e9; }
+html.light *[class*="bg-pink-950"]    { --light-hue: #ec4899; } html.light *[class*="bg-pink-900"]    { --light-hue: #ec4899; }
+html.light *[class*="bg-fuchsia-950"] { --light-hue: #d946ef; } html.light *[class*="bg-fuchsia-900"] { --light-hue: #d946ef; }
+
+html.light *[class*="bg-amber-950"], html.light *[class*="bg-red-950"],
+html.light *[class*="bg-rose-950"], html.light *[class*="bg-emerald-950"],
+html.light *[class*="bg-green-950"], html.light *[class*="bg-cyan-950"],
+html.light *[class*="bg-teal-950"], html.light *[class*="bg-blue-950"],
+html.light *[class*="bg-indigo-950"], html.light *[class*="bg-purple-950"],
+html.light *[class*="bg-violet-950"], html.light *[class*="bg-orange-950"],
+html.light *[class*="bg-sky-950"], html.light *[class*="bg-pink-950"],
+html.light *[class*="bg-fuchsia-950"] {
+  background-color: color-mix(in srgb, var(--light-hue) 12%, #fff) !important;
+}
+
+/* Gradient headline text (`bg-clip-text text-transparent`, two call
+   sites) paints pale stops that vanish on white; under light mode the
+   glyphs take the brand's mid-cyan flat colour instead. */
+html.light *[class*="bg-clip-text"][class*="text-transparent"] {
+  background-image: none !important;
+  -webkit-text-fill-color: initial !important;
+  color: rgb(8 145 178) !important; /* cyan-700 */
+}
+
+/* Custom Scrollbars — themed via the slate tokens so the track/thumb
+   follow the active mode instead of staying dark-on-light. */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #0f172a;
+  background: rgb(var(--slate-900));
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #334155;
+  background: rgb(var(--slate-700));
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #475569;
+  background: rgb(var(--slate-600));
 }
 
-/* Glassmorphism & Cyber Aesthetics */
+/* Glassmorphism & Cyber Aesthetics — panel tint/border derive from the
+   active theme's slate-800/slate-700 tokens. */
 .glass-panel {
-  background: rgba(30, 41, 59, 0.7);
+  background: rgb(var(--slate-800) / 0.7);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(51, 65, 85, 0.6);
+  border: 1px solid rgb(var(--slate-700) / 0.6);
 }
 
 .glass-panel-glow {
-  background: rgba(30, 41, 59, 0.85);
+  background: rgb(var(--slate-800) / 0.85);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(6, 182, 212, 0.3);
