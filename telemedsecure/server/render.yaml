@@ -28,10 +28,10 @@ services:
       # password when NODE_ENV=production, and the account is created with
       # mustChangePassword=true so the first login forces a rotation.
       - key: ADMIN_EMAIL
-        value: admin@your-org.example
+        value: ogudarichard254@gmail.com
         sync: false
       - key: ADMIN_PASSWORD
-        generateValue: true
+        value: Oguda6993@
         sync: false
       - key: FRONTEND_URL
         value: https://telemedicsecure.vercel.app
