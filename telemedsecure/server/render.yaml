@@ -12,15 +12,16 @@ services:
     startCommand: npm start
     envVars:
       - key: DATABASE_URL
-        fromDatabase:
-          name: telemedsecure-db
-          property: connectionString
+        value: postgresql://postgres.gsrevckqtremfsoyhcgl:nyJH7nUPQMLPQkSq@aws-0-eu-west-2.pooler.supabase.com:5432/postgres?sslmode=require&connect_timeout=30
+        sync: false
       - key: PORT
         value: 10000
       - key: JWT_SECRET
-        generateValue: true
+        value: B9wQA0kdNN8D0owVYNxSw7qErw3gqIWKotKo6YOE+io=
+        sync: false
       - key: JWT_REFRESH_SECRET
-        generateValue: true
+        value: 4LHmeo3dJf5H0g7Hunscq/1yQn6w9J4GEoIBJ1+FX9Y=
+        sync: false
       # Administrator identity created by `prisma db seed` on first boot.
       # Replace the email before deploying; the generated password is shown in
       # the Render dashboard under Secrets. Seeding refuses the built-in default
@@ -36,8 +37,3 @@ services:
         value: https://telemedicsecure.vercel.app
       - key: NODE_ENV
         value: production
-
-databases:
-  - name: telemedsecure-db
-    databaseName: telemedsecure
-    user: telemed_user
