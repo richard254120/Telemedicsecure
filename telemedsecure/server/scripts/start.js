@@ -3,17 +3,6 @@ const path = require('path');
 
 console.log('==> [TeleMedSecure Server Startup]');
 
-// 1. Resolve failed migration if present in _prisma_migrations
-try {
-  console.log('==> Checking and resolving any interrupted migration state...');
-  execSync('npx prisma migrate resolve --rolled-back 20261013170000_add_verification_and_staff_invitation', {
-    stdio: 'inherit'
-  });
-  console.log('==> Successfully marked previous failed migration as rolled-back.');
-} catch (e) {
-  // It is expected to exit with non-zero if there was no failed migration to roll back
-  console.log('==> No failed migration record needed roll-back (or already resolved).');
-}
 
 // 2. Deploy migrations
 try {
