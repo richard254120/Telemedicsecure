@@ -170,6 +170,9 @@ export default function Login() {
 
     if (!validateForm()) return;
 
+    // Clear password immediately to prevent browser save prompt
+    const passwordValue = password;
+    setPassword('');
     setLoading(true);
 
     if (activeSection === 'PATIENT' && isPatientRegister) {
@@ -206,7 +209,7 @@ export default function Login() {
 
     // Unified sign in for Doctor, Nurse, Admin, or Patient (email + password;
     // the authenticator-app second factor has been removed from the login flow).
-    const res = await login(email.trim().toLowerCase(), password);
+    const res = await login(email.trim().toLowerCase(), passwordValue);
     if (res.success) {
       // Direct navigation to user's authorized role dashboard
       const storedUser = localStorage.getItem('telemed_user');
@@ -215,6 +218,7 @@ export default function Login() {
       navigate(rolePath);
     } else {
       setError(res.error || 'Invalid email or password.');
+      setPassword(passwordValue); // Restore password on error
     }
     setLoading(false);
   };
@@ -228,6 +232,9 @@ export default function Login() {
 
     if (!validateForm()) return;
 
+    // Clear password immediately to prevent browser save prompt
+    const passwordValue = password;
+    setPassword('');
     setLoading(true);
     try {
       const res = await fetch(`${API_BASE}/auth/register-staff`, {
@@ -236,7 +243,7 @@ export default function Login() {
         body: JSON.stringify({
           invitationToken: inviteToken,
           email: inviteData.email,
-          password,
+          password: passwordValue,
           firstName: firstName.trim(),
           lastName: lastName.trim(),
           medicalLicenseNo: medicalLicenseNo.trim() || undefined,
@@ -254,12 +261,13 @@ export default function Login() {
             window.location.href = `/${data.user.role.toLowerCase()}`;
           }, 1000);
         } else {
-          await login(inviteData.email, password);
+          await login(inviteData.email, passwordValue);
           navigate(`/${data.user.role.toLowerCase()}`);
         }
       } else {
         if (data.expired) setInviteExpired(true);
         setError(data.error || 'Failed to complete staff onboarding');
+        setPassword(passwordValue); // Restore password on error
       }
     } catch (err) {
       console.error('Staff onboarding error:', err);
@@ -381,8 +389,8 @@ export default function Login() {
             id="nav-section-doctor"
             onClick={() => handleSectionSelect('DOCTOR')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'DOCTOR'
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <Stethoscope className="w-4 h-4" />
@@ -395,8 +403,8 @@ export default function Login() {
             id="nav-section-nurse"
             onClick={() => handleSectionSelect('NURSE')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'NURSE'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <HeartPulse className="w-4 h-4" />
@@ -409,8 +417,8 @@ export default function Login() {
             id="nav-section-staff"
             onClick={() => handleSectionSelect('STAFF')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'STAFF'
-                ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <Pill className="w-4 h-4" />
@@ -423,8 +431,8 @@ export default function Login() {
             id="nav-section-admin"
             onClick={() => handleSectionSelect('ADMIN')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'ADMIN'
-                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <ShieldAlert className="w-4 h-4" />
@@ -437,8 +445,8 @@ export default function Login() {
             id="nav-section-patient"
             onClick={() => handleSectionSelect('PATIENT')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'PATIENT'
-                ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/30 ring-1 ring-cyan-300'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/30 ring-1 ring-cyan-300'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <User className="w-4 h-4" />
@@ -451,8 +459,8 @@ export default function Login() {
             id="nav-section-invitation"
             onClick={() => handleSectionSelect('INVITATION')}
             className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 relative ${activeSection === 'INVITATION'
-                ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+              ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
               }`}
           >
             <Ticket className="w-4 h-4 text-amber-300" />
@@ -593,27 +601,158 @@ export default function Login() {
               )}
 
               {inviteToken && inviteData && !inviteExpired && (
-                <form className="space-y-4 animate-fadeIn" onSubmit={handleStaffOnboardingSubmit} autoComplete="off">
-                  <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-xs space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
-                        <CheckCircle2 className="w-4 h-4 text-cyan-400" />
-                        <span>Verified Invitation Token</span>
-                      </span>
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                        {inviteData.role}
-                      </span>
+                <div data-lpignore="true">
+                  <form className="space-y-4 animate-fadeIn" onSubmit={handleStaffOnboardingSubmit} autoComplete="off">
+                    <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+                          <span>Verified Invitation Token</span>
+                        </span>
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          {inviteData.role}
+                        </span>
+                      </div>
+                      <div className="flex items-center space-x-1.5 text-[11px] text-amber-300 font-mono">
+                        <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>Valid for 5 minutes from generation</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Onboarding account for <strong className="text-white">{inviteData.email}</strong>. Complete your credentials below to immediately access your workstation.
+                      </p>
                     </div>
-                    <div className="flex items-center space-x-1.5 text-[11px] text-amber-300 font-mono">
-                      <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                      <span>Valid for 5 minutes from generation</span>
-                    </div>
-                    <p className="text-[11px] text-slate-300">
-                      Onboarding account for <strong className="text-white">{inviteData.email}</strong>. Complete your credentials below to immediately access your workstation.
-                    </p>
-                  </div>
 
-                  <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                          First Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={firstName}
+                          onChange={e => setFirstName(e.target.value)}
+                          required
+                          placeholder="e.g. Robert"
+                          autoComplete="off"
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                          Last Name *
+                        </label>
+                        <input
+                          type="text"
+                          value={lastName}
+                          onChange={e => setLastName(e.target.value)}
+                          required
+                          placeholder="e.g. Chen"
+                          autoComplete="off"
+                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                        Work Email (Locked to Token)
+                      </label>
+                      <div className="relative">
+                        <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input
+                          type="email"
+                          value={inviteData.email}
+                          disabled
+                          autoComplete="off"
+                          className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-400 font-mono text-xs cursor-not-allowed"
+                        />
+                      </div>
+                    </div>
+
+                    {['DOCTOR', 'NURSE'].includes(inviteData.role) && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                            Medical License / NPI #
+                          </label>
+                          <input
+                            type="text"
+                            value={medicalLicenseNo}
+                            onChange={e => setMedicalLicenseNo(e.target.value)}
+                            placeholder="NPI-1928374829"
+                            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                            Clinical Specialty
+                          </label>
+                          <input
+                            type="text"
+                            value={specialty}
+                            onChange={e => setSpecialty(e.target.value)}
+                            placeholder="Cardiology / Internal"
+                            className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                          Set Account Password *
+                        </label>
+                        <span className="text-[10px] text-slate-500">Min 8 characters</span>
+                      </div>
+                      <div className="relative">
+                        <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                        <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          name="account-secret"
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                          required
+                          placeholder="••••••••"
+                          autoComplete="new-password"
+                          data-lpignore="true"
+                          data-form-type="other"
+                          readOnly
+                          onFocus={(e) => e.target.removeAttribute('readonly')}
+                          className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                        >
+                          {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-600/25 flex items-center justify-center space-x-2 disabled:opacity-50"
+                    >
+                      <UserPlus className="w-4 h-4" />
+                      <span>{loading ? 'Activating Account...' : `Complete Onboarding as ${inviteData.role}`}</span>
+                    </button>
+                  </form>
+                </div>
+              )}
+            </div>
+          ) : (
+            /* ============================================================ */
+            /* SECTIONS 1-4: STANDARD SIGN IN FOR DOCTOR / NURSE / ADMIN / PATIENT */
+            /* ============================================================ */
+            <div data-lpignore="true">
+              <form className="space-y-4" onSubmit={handleLoginSubmit} autoComplete="off">
+                {/* Registration fields for Patient only */}
+                {activeSection === 'PATIENT' && isPatientRegister && (
+                  <div className="grid grid-cols-2 gap-3 animate-fadeIn">
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
                         First Name *
@@ -622,11 +761,14 @@ export default function Login() {
                         type="text"
                         value={firstName}
                         onChange={e => setFirstName(e.target.value)}
-                        required
-                        placeholder="e.g. Robert"
                         autoComplete="off"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                        className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                          }`}
+                        placeholder="e.g. Jane"
                       />
+                      {validationErrors.firstName && (
+                        <p className="text-[10px] text-red-400 mt-1">{validationErrors.firstName}</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
@@ -636,215 +778,93 @@ export default function Login() {
                         type="text"
                         value={lastName}
                         onChange={e => setLastName(e.target.value)}
-                        required
-                        placeholder="e.g. Chen"
                         autoComplete="off"
-                        className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
+                        className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                          }`}
+                        placeholder="e.g. Doe"
                       />
+                      {validationErrors.lastName && (
+                        <p className="text-[10px] text-red-400 mt-1">{validationErrors.lastName}</p>
+                      )}
                     </div>
                   </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                      Work Email (Locked to Token)
-                    </label>
-                    <div className="relative">
-                      <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                      <input
-                        type="email"
-                        value={inviteData.email}
-                        disabled
-                        autoComplete="off"
-                        className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-400 font-mono text-xs cursor-not-allowed"
-                      />
-                    </div>
-                  </div>
-
-                  {['DOCTOR', 'NURSE'].includes(inviteData.role) && (
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                          Medical License / NPI #
-                        </label>
-                        <input
-                          type="text"
-                          value={medicalLicenseNo}
-                          onChange={e => setMedicalLicenseNo(e.target.value)}
-                          placeholder="NPI-1928374829"
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                          Clinical Specialty
-                        </label>
-                        <input
-                          type="text"
-                          value={specialty}
-                          onChange={e => setSpecialty(e.target.value)}
-                          placeholder="Cardiology / Internal"
-                          className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                        Set Account Password *
-                      </label>
-                      <span className="text-[10px] text-slate-500">Min 8 characters</span>
-                    </div>
-                    <div className="relative">
-                      <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        required
-                        placeholder="••••••••"
-                        autoComplete="new-password"
-                        data-lpignore="true"
-                        data-form-type="other"
-                        className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                      >
-                        {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-600/25 flex items-center justify-center space-x-2 disabled:opacity-50"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span>{loading ? 'Activating Account...' : `Complete Onboarding as ${inviteData.role}`}</span>
-                  </button>
-                </form>
-              )}
-            </div>
-          ) : (
-            /* ============================================================ */
-            /* SECTIONS 1-4: STANDARD SIGN IN FOR DOCTOR / NURSE / ADMIN / PATIENT */
-            /* ============================================================ */
-            <form className="space-y-4" onSubmit={handleLoginSubmit} autoComplete="off">
-              {/* Registration fields for Patient only */}
-              {activeSection === 'PATIENT' && isPatientRegister && (
-                <div className="grid grid-cols-2 gap-3 animate-fadeIn">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                      First Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={firstName}
-                      onChange={e => setFirstName(e.target.value)}
-                      autoComplete="off"
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                        }`}
-                      placeholder="e.g. Jane"
-                    />
-                    {validationErrors.firstName && (
-                      <p className="text-[10px] text-red-400 mt-1">{validationErrors.firstName}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                      Last Name *
-                    </label>
-                    <input
-                      type="text"
-                      value={lastName}
-                      onChange={e => setLastName(e.target.value)}
-                      autoComplete="off"
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                        }`}
-                      placeholder="e.g. Doe"
-                    />
-                    {validationErrors.lastName && (
-                      <p className="text-[10px] text-red-400 mt-1">{validationErrors.lastName}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Email Address */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                  {activeSection === 'PATIENT' ? 'Patient Email Address *' : `${meta.title} Email *`}
-                </label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={e => setEmail(e.target.value)}
-                    autoComplete="off"
-                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
-                    placeholder={meta.emailPlaceholder}
-                  />
-                </div>
-                {validationErrors.email && (
-                  <p className="text-[10px] text-red-400 mt-1">{validationErrors.email}</p>
                 )}
-              </div>
 
-              {/* Password */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                    Password *
+                {/* Email Address */}
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                    {activeSection === 'PATIENT' ? 'Patient Email Address *' : `${meta.title} Email *`}
                   </label>
-                  {activeSection !== 'PATIENT' && (
-                    <span className="text-[10px] text-slate-500">
-                      Use password configured by Administrator
-                    </span>
+                  <div className="relative">
+                    <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      autoComplete="off"
+                      className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                        }`}
+                      placeholder={meta.emailPlaceholder}
+                    />
+                  </div>
+                  {validationErrors.email && (
+                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.email}</p>
                   )}
                 </div>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    value={password}
-                    onChange={e => setPassword(e.target.value)}
-                    autoComplete="new-password"
-                    data-lpignore="true"
-                    data-form-type="other"
-                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.password ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
-                    placeholder="••••••••"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-                {validationErrors.password && (
-                  <p className="text-[10px] text-red-400 mt-1">{validationErrors.password}</p>
-                )}
-              </div>
 
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                className={`w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs transition shadow-lg bg-gradient-to-r text-white flex items-center justify-center space-x-2 disabled:opacity-50 ${meta.gradient}`}
-              >
-                <KeyRound className="w-4 h-4" />
-                <span>{loading ? 'Authenticating...' : meta.buttonText}</span>
-              </button>
-            </form>
+                {/* Password */}
+                <div>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider">
+                      Password *
+                    </label>
+                    {activeSection !== 'PATIENT' && (
+                      <span className="text-[10px] text-slate-500">
+                        Use password configured by Administrator
+                      </span>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                    <input type="password" style={{ display: 'none' }} tabIndex={-1} aria-hidden="true" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      name="user-credential"
+                      value={password}
+                      onChange={e => setPassword(e.target.value)}
+                      autoComplete="new-password"
+                      data-lpignore="true"
+                      data-form-type="other"
+                      readOnly
+                      onFocus={(e) => e.target.removeAttribute('readonly')}
+                      className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.password ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                        }`}
+                      placeholder="••••••••"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                  {validationErrors.password && (
+                    <p className="text-[10px] text-red-400 mt-1">{validationErrors.password}</p>
+                  )}
+                </div>
+
+                {/* Submit Button */}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className={`w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs transition shadow-lg bg-gradient-to-r text-white flex items-center justify-center space-x-2 disabled:opacity-50 ${meta.gradient}`}
+                >
+                  <KeyRound className="w-4 h-4" />
+                  <span>{loading ? 'Authenticating...' : meta.buttonText}</span>
+                </button>
+              </form>
+            </div>
           )}
 
           {/* Bottom toggle for Patient self-registration vs login */}
