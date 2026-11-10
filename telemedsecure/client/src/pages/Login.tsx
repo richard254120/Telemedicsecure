@@ -64,21 +64,21 @@ export default function Login() {
     setError(null);
     try {
       // Extract raw token if the user supplied a full URL (e.g., copied the invitation link)
-  const extractToken = (input: string): string => {
-    try {
-      const url = new URL(input);
-      // If URL contains an `invite` query param, use that as the token
-      if (url.searchParams.has('invite')) {
-        return url.searchParams.get('invite') ?? input;
-      }
-    } catch {
-      // Not a URL, fall back to raw input
-    }
-    return input;
-  };
+      const extractToken = (input: string): string => {
+        try {
+          const url = new URL(input);
+          // If URL contains an `invite` query param, use that as the token
+          if (url.searchParams.has('invite')) {
+            return url.searchParams.get('invite') ?? input;
+          }
+        } catch {
+          // Not a URL, fall back to raw input
+        }
+        return input;
+      };
 
-  const rawToken = extractToken(token.trim());
-  const res = await fetch(`${API_BASE}/auth/invitations/${encodeURIComponent(rawToken)}`);
+      const rawToken = extractToken(token.trim());
+      const res = await fetch(`${API_BASE}/auth/invitations/${encodeURIComponent(rawToken)}`);
       const data = await res.json();
       if (res.ok && data.valid) {
         setInviteData(data);
@@ -380,11 +380,10 @@ export default function Login() {
             type="button"
             id="nav-section-doctor"
             onClick={() => handleSectionSelect('DOCTOR')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
-              activeSection === 'DOCTOR'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'DOCTOR'
                 ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-1 ring-blue-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <Stethoscope className="w-4 h-4" />
             <span className="text-[11px]">Doctor</span>
@@ -395,11 +394,10 @@ export default function Login() {
             type="button"
             id="nav-section-nurse"
             onClick={() => handleSectionSelect('NURSE')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
-              activeSection === 'NURSE'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'NURSE'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <HeartPulse className="w-4 h-4" />
             <span className="text-[11px]">Nurse</span>
@@ -410,11 +408,10 @@ export default function Login() {
             type="button"
             id="nav-section-staff"
             onClick={() => handleSectionSelect('STAFF')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
-              activeSection === 'STAFF'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'STAFF'
                 ? 'bg-teal-600 text-white shadow-md shadow-teal-600/30 ring-1 ring-teal-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <Pill className="w-4 h-4" />
             <span className="text-[11px]">Stations</span>
@@ -425,11 +422,10 @@ export default function Login() {
             type="button"
             id="nav-section-admin"
             onClick={() => handleSectionSelect('ADMIN')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
-              activeSection === 'ADMIN'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'ADMIN'
                 ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30 ring-1 ring-purple-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <ShieldAlert className="w-4 h-4" />
             <span className="text-[11px]">Admin</span>
@@ -440,11 +436,10 @@ export default function Login() {
             type="button"
             id="nav-section-patient"
             onClick={() => handleSectionSelect('PATIENT')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${
-              activeSection === 'PATIENT'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 ${activeSection === 'PATIENT'
                 ? 'bg-cyan-500 text-white shadow-md shadow-cyan-500/30 ring-1 ring-cyan-300'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <User className="w-4 h-4" />
             <span className="text-[11px]">Patient</span>
@@ -455,11 +450,10 @@ export default function Login() {
             type="button"
             id="nav-section-invitation"
             onClick={() => handleSectionSelect('INVITATION')}
-            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 relative ${
-              activeSection === 'INVITATION'
+            className={`py-2.5 px-2 rounded-xl text-xs font-bold transition flex flex-col items-center justify-center space-y-1 relative ${activeSection === 'INVITATION'
                 ? 'bg-amber-600 text-white shadow-md shadow-amber-600/30 ring-1 ring-amber-400'
                 : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
+              }`}
           >
             <Ticket className="w-4 h-4 text-amber-300" />
             <span className="text-[11px]">Invite Token</span>
@@ -706,6 +700,8 @@ export default function Login() {
                         onChange={e => setPassword(e.target.value)}
                         required
                         placeholder="••••••••"
+                        autoComplete="off"
+                        data-form-type="other"
                         className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
                       />
                       <button
@@ -745,9 +741,8 @@ export default function Login() {
                       type="text"
                       value={firstName}
                       onChange={e => setFirstName(e.target.value)}
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                        validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
+                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                        }`}
                       placeholder="e.g. Jane"
                     />
                     {validationErrors.firstName && (
@@ -762,9 +757,8 @@ export default function Login() {
                       type="text"
                       value={lastName}
                       onChange={e => setLastName(e.target.value)}
-                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                        validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                      }`}
+                      className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                        }`}
                       placeholder="e.g. Doe"
                     />
                     {validationErrors.lastName && (
@@ -785,9 +779,8 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                      validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                    }`}
+                    className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                      }`}
                     placeholder={meta.emailPlaceholder}
                   />
                 </div>
@@ -814,9 +807,10 @@ export default function Login() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${
-                      validationErrors.password ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
-                    }`}
+                    autoComplete="off"
+                    data-form-type="other"
+                    className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.password ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
+                      }`}
                     placeholder="••••••••"
                   />
                   <button

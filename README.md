@@ -34,3 +34,9 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Acknowledgement
+
+This project was undertaken as part of the academic curriculum at **Meru University of Science and Technology** under the guidance and supervision of **Dr. Dorothy Bundi**. We express our sincere gratitude for her mentorship, valuable insights, and continuous support throughout the development of this telemedicine system.
+
+We also extend our appreciation to **Meru University Hospital** and its dedicated staff for their collaboration and support in providing valuable insights into the healthcare system requirements, which were instrumental in shaping this telemedicine platform.
