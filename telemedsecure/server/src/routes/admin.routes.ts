@@ -388,17 +388,17 @@ router.post('/invitations', async (req, res) => {
     }
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
-    
+
     // Explicitly set default expiration to 5 minutes
     const minutes = (() => {
-  // Allow overriding default expiration via environment variable (in minutes)
-  const envDefault = process.env.INVITE_DEFAULT_EXPIRATION_MINUTES
-    ? Number(process.env.INVITE_DEFAULT_EXPIRATION_MINUTES)
-    : 60; // default to 60 minutes for production use
-  if (expiresInMinutes !== undefined) return Number(expiresInMinutes);
-  if (expiresInHours !== undefined) return Number(expiresInHours) * 60;
-  return envDefault;
-})();
+      // Allow overriding default expiration via environment variable (in minutes)
+      const envDefault = process.env.INVITE_DEFAULT_EXPIRATION_MINUTES
+        ? Number(process.env.INVITE_DEFAULT_EXPIRATION_MINUTES)
+        : 60; // default to 60 minutes for production use
+      if (expiresInMinutes !== undefined) return Number(expiresInMinutes);
+      if (expiresInHours !== undefined) return Number(expiresInHours) * 60;
+      return envDefault;
+    })();
     const expiresAt = new Date(Date.now() + minutes * 60 * 1000);
 
     const invitation = await prisma.staffInvitation.create({
@@ -627,23 +627,47 @@ router.post('/users/batch-delete', async (req, res) => {
       return res.status(404).json({ error: 'No matching users found to delete.' });
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const target of targets) {
-        await purgeSingleUser(tx, target.id);
+    // Process each user sequentially with individual transactions to avoid timeout
+    const deletedUserIds: string[] = [];
+    const failedDeletions: { id: string; email: string; error: string }[] = [];
+
+    for (const target of targets) {
+      try {
+        await prisma.$transaction(async (tx) => {
+          await purgeSingleUser(tx, target.id);
+        });
+        deletedUserIds.push(target.id);
+      } catch (err: any) {
+        console.error(`Failed to delete user ${target.id} (${target.email}):`, err);
+        failedDeletions.push({
+          id: target.id,
+          email: target.email,
+          error: err.message || 'Unknown error',
+        });
       }
-    });
+    }
 
     await logAudit(
       'USERS_BATCH_PURGED_PERMANENTLY',
-      `COUNT:${targets.length}:USERS:${targets.map(t => t.email).join(',')}`,
+      `COUNT:${deletedUserIds.length}:USERS:${targets.map(t => t.email).join(',')}`,
       adminUser.id,
       req.ip
     );
 
+    if (failedDeletions.length > 0) {
+      return res.status(207).json({
+        message: `Partially completed: ${deletedUserIds.length} user(s) deleted successfully, ${failedDeletions.length} failed.`,
+        deletedCount: deletedUserIds.length,
+        deletedUserIds,
+        failedCount: failedDeletions.length,
+        failedDeletions,
+      });
+    }
+
     res.json({
-      message: `Successfully purged ${targets.length} user account(s) and all associated records permanently from the system.`,
-      deletedCount: targets.length,
-      deletedUserIds: targets.map(t => t.id),
+      message: `Successfully purged ${deletedUserIds.length} user account(s) and all associated records permanently from the system.`,
+      deletedCount: deletedUserIds.length,
+      deletedUserIds,
     });
   } catch (err: any) {
     console.error('Error in batch deleting users:', err);
