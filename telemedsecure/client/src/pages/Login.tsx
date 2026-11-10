@@ -163,8 +163,7 @@ export default function Login() {
   };
 
   // Submit standard login
-  const handleLoginSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLoginSubmit = async () => {
     setError(null);
     setSuccessMessage(null);
 
@@ -224,8 +223,7 @@ export default function Login() {
   };
 
   // Staff onboarding registration via invitation token
-  const handleStaffOnboardingSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleStaffOnboardingSubmit = async () => {
     if (!inviteToken || !inviteData) return;
     setError(null);
     setSuccessMessage(null);
@@ -602,7 +600,7 @@ export default function Login() {
 
               {inviteToken && inviteData && !inviteExpired && (
                 <div data-lpignore="true">
-                  <form className="space-y-4 animate-fadeIn" onSubmit={handleStaffOnboardingSubmit} autoComplete="off">
+                  <div className="space-y-4 animate-fadeIn">
                     <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-xs space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
@@ -733,14 +731,15 @@ export default function Login() {
                     </div>
 
                     <button
-                      type="submit"
+                      type="button"
+                      onClick={handleStaffOnboardingSubmit}
                       disabled={loading}
                       className="w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white shadow-lg shadow-cyan-600/25 flex items-center justify-center space-x-2 disabled:opacity-50"
                     >
                       <UserPlus className="w-4 h-4" />
                       <span>{loading ? 'Activating Account...' : `Complete Onboarding as ${inviteData.role}`}</span>
                     </button>
-                  </form>
+                  </div>
                 </div>
               )}
             </div>
@@ -749,7 +748,7 @@ export default function Login() {
             /* SECTIONS 1-4: STANDARD SIGN IN FOR DOCTOR / NURSE / ADMIN / PATIENT */
             /* ============================================================ */
             <div data-lpignore="true">
-              <form className="space-y-4" onSubmit={handleLoginSubmit} autoComplete="off">
+              <div className="space-y-4">
                 {/* Registration fields for Patient only */}
                 {activeSection === 'PATIENT' && isPatientRegister && (
                   <div className="grid grid-cols-2 gap-3 animate-fadeIn">
@@ -856,14 +855,15 @@ export default function Login() {
 
                 {/* Submit Button */}
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={handleLoginSubmit}
                   disabled={loading}
                   className={`w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs transition shadow-lg bg-gradient-to-r text-white flex items-center justify-center space-x-2 disabled:opacity-50 ${meta.gradient}`}
                 >
                   <KeyRound className="w-4 h-4" />
                   <span>{loading ? 'Authenticating...' : meta.buttonText}</span>
                 </button>
-              </form>
+              </div>
             </div>
           )}
 
