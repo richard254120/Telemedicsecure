@@ -521,6 +521,9 @@ async function purgeSingleUser(targetId: string) {
   await prisma.triageAssessment.deleteMany({ where: { OR: [{ patientId: targetId }, { officerId: targetId }] } });
   await prisma.carePlan.deleteMany({ where: { OR: [{ patientId: targetId }, { coordinatorId: targetId }] } });
 
+  // 5.5. Delete care team memberships where user is clinician or patient
+  await prisma.careTeamMembership.deleteMany({ where: { OR: [{ clinicianId: targetId }, { patientId: targetId }] } });
+
   // 6. Delete prescriptions authored by doctor (with items & signatures)
   const docPrescriptions = await prisma.prescription.findMany({ where: { doctorId: targetId }, select: { id: true } });
   const docRxIds = docPrescriptions.map((p: any) => p.id);
