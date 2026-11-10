@@ -2220,6 +2220,9 @@ export default function DoctorDashboard() {
                   value={rxDoctorPassword}
                   onChange={e => setRxDoctorPassword(e.target.value)}
                   placeholder="Physician password for Ed25519 signature..."
+                  autoComplete="new-password"
+                  data-lpignore="true"
+                  data-form-type="other"
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white focus:outline-none focus:border-emerald-500 font-mono"
                 />
               </div>

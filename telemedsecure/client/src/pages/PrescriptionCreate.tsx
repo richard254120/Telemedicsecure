@@ -399,6 +399,9 @@ export default function PrescriptionCreate() {
                 value={doctorPassword}
                 onChange={e => setDoctorPassword(e.target.value)}
                 placeholder="Enter doctor password to unlock signing key"
+                autoComplete="new-password"
+                data-lpignore="true"
+                data-form-type="other"
                 className="w-full max-w-md bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-mono"
               />
               <p className="text-[11px] text-slate-500 mt-1">

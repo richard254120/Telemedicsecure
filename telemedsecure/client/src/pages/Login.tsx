@@ -546,6 +546,7 @@ export default function Login() {
                         value={inviteTokenInput}
                         onChange={e => setInviteTokenInput(e.target.value)}
                         placeholder="Paste single-use token from admin..."
+                        autoComplete="off"
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-amber-500"
                       />
                     </div>
@@ -592,7 +593,7 @@ export default function Login() {
               )}
 
               {inviteToken && inviteData && !inviteExpired && (
-                <form className="space-y-4 animate-fadeIn" onSubmit={handleStaffOnboardingSubmit}>
+                <form className="space-y-4 animate-fadeIn" onSubmit={handleStaffOnboardingSubmit} autoComplete="off">
                   <div className="p-3.5 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-xs space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-cyan-300 flex items-center space-x-1.5">
@@ -623,6 +624,7 @@ export default function Login() {
                         onChange={e => setFirstName(e.target.value)}
                         required
                         placeholder="e.g. Robert"
+                        autoComplete="off"
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
                       />
                     </div>
@@ -636,6 +638,7 @@ export default function Login() {
                         onChange={e => setLastName(e.target.value)}
                         required
                         placeholder="e.g. Chen"
+                        autoComplete="off"
                         className="w-full px-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
                       />
                     </div>
@@ -651,6 +654,7 @@ export default function Login() {
                         type="email"
                         value={inviteData.email}
                         disabled
+                        autoComplete="off"
                         className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950/70 border border-slate-800 text-slate-400 font-mono text-xs cursor-not-allowed"
                       />
                     </div>
@@ -700,7 +704,8 @@ export default function Login() {
                         onChange={e => setPassword(e.target.value)}
                         required
                         placeholder="••••••••"
-                        autoComplete="off"
+                        autoComplete="new-password"
+                        data-lpignore="true"
                         data-form-type="other"
                         className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border border-slate-800 focus:border-cyan-500 text-white placeholder-slate-500 text-xs focus:outline-none"
                       />
@@ -729,7 +734,7 @@ export default function Login() {
             /* ============================================================ */
             /* SECTIONS 1-4: STANDARD SIGN IN FOR DOCTOR / NURSE / ADMIN / PATIENT */
             /* ============================================================ */
-            <form className="space-y-4" onSubmit={handleLoginSubmit}>
+            <form className="space-y-4" onSubmit={handleLoginSubmit} autoComplete="off">
               {/* Registration fields for Patient only */}
               {activeSection === 'PATIENT' && isPatientRegister && (
                 <div className="grid grid-cols-2 gap-3 animate-fadeIn">
@@ -741,6 +746,7 @@ export default function Login() {
                       type="text"
                       value={firstName}
                       onChange={e => setFirstName(e.target.value)}
+                      autoComplete="off"
                       className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.firstName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                         }`}
                       placeholder="e.g. Jane"
@@ -757,6 +763,7 @@ export default function Login() {
                       type="text"
                       value={lastName}
                       onChange={e => setLastName(e.target.value)}
+                      autoComplete="off"
                       className={`w-full px-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.lastName ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                         }`}
                       placeholder="e.g. Doe"
@@ -779,6 +786,7 @@ export default function Login() {
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
+                    autoComplete="off"
                     className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                       }`}
                     placeholder={meta.emailPlaceholder}
@@ -807,7 +815,8 @@ export default function Login() {
                     type={showPassword ? 'text' : 'password'}
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    autoComplete="off"
+                    autoComplete="new-password"
+                    data-lpignore="true"
                     data-form-type="other"
                     className={`w-full pl-10 pr-10 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.password ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                       }`}

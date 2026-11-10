@@ -215,6 +215,8 @@ const ProvisionStaffModal: React.FC<ProvisionStaffModalProps> = ({ open, onClose
                   onChange={event => setPassword(event.target.value)}
                   type="password"
                   autoComplete="new-password"
+                  data-lpignore="true"
+                  data-form-type="other"
                   minLength={8}
                   placeholder="At least 8 characters, or blank"
                   className={`${INPUT_CLASS} font-mono`}
