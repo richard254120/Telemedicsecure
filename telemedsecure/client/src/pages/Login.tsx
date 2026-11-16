@@ -20,7 +20,14 @@ import {
   Ticket,
   UserPlus,
   ArrowRight,
-  Pill
+  Pill,
+  FlaskConical,
+  Microscope,
+  ScanLine,
+  Receipt,
+  Siren,
+  Handshake,
+  ClipboardList,
 } from 'lucide-react';
 
 export type LoginSection = 'PATIENT' | 'DOCTOR' | 'NURSE' | 'STAFF' | 'ADMIN' | 'INVITATION';
@@ -69,14 +76,14 @@ export default function Login() {
     | '';
   const [selectedStation, setSelectedStation] = useState<StationRole>('');
 
-  const STATION_OPTIONS: { value: StationRole; label: string; icon: string; desc: string; color: string }[] = [
-    { value: 'PHARMACIST',       label: 'Pharmacy',           icon: '💊', desc: 'Dispensing & Medication Review',       color: 'teal'   },
-    { value: 'RECEPTIONIST',     label: 'Reception',          icon: '🗂️', desc: 'Patient Check-in & Scheduling',       color: 'sky'    },
-    { value: 'LAB_TECHNICIAN',   label: 'Laboratory',         icon: '🔬', desc: 'Lab Tests & Specimen Analysis',        color: 'violet' },
-    { value: 'RADIOLOGIST',      label: 'Radiology',          icon: '🩻', desc: 'Imaging & Diagnostic Reports',         color: 'indigo' },
-    { value: 'BILLING_OFFICER',  label: 'Billing',            icon: '🧾', desc: 'Claims, Invoices & Payments',          color: 'amber'  },
-    { value: 'TRIAGE_OFFICER',   label: 'Triage',             icon: '🚨', desc: 'Emergency Prioritisation & Acuity',   color: 'red'    },
-    { value: 'CARE_COORDINATOR', label: 'Care Coordination',  icon: '🤝', desc: 'Case Management & Referrals',          color: 'emerald'},
+  const STATION_OPTIONS: { value: StationRole; label: string; Icon: React.ElementType; desc: string; color: string }[] = [
+    { value: 'PHARMACIST',       label: 'Pharmacy',          Icon: Pill,          desc: 'Dispensing & Medication Review',      color: 'teal'    },
+    { value: 'RECEPTIONIST',     label: 'Reception',         Icon: ClipboardList, desc: 'Patient Check-in & Scheduling',       color: 'sky'     },
+    { value: 'LAB_TECHNICIAN',   label: 'Laboratory',        Icon: FlaskConical,  desc: 'Lab Tests & Specimen Analysis',       color: 'violet'  },
+    { value: 'RADIOLOGIST',      label: 'Radiology',         Icon: ScanLine,      desc: 'Imaging & Diagnostic Reports',        color: 'indigo'  },
+    { value: 'BILLING_OFFICER',  label: 'Billing',           Icon: Receipt,       desc: 'Claims, Invoices & Payments',         color: 'amber'   },
+    { value: 'TRIAGE_OFFICER',   label: 'Triage',            Icon: Siren,         desc: 'Emergency Prioritisation & Acuity',  color: 'red'     },
+    { value: 'CARE_COORDINATOR', label: 'Care Coordination', Icon: Handshake,     desc: 'Case Management & Referrals',         color: 'emerald' },
   ];
 
   // Verify staff invitation token
@@ -867,7 +874,7 @@ export default function Login() {
                         <option value="" disabled>— Choose your clinical station —</option>
                         {STATION_OPTIONS.map(s => (
                           <option key={s.value} value={s.value}>
-                            {s.icon}  {s.label} — {s.desc}
+                            {s.label} — {s.desc}
                           </option>
                         ))}
                       </select>
@@ -883,7 +890,9 @@ export default function Login() {
                       const st = STATION_OPTIONS.find(s => s.value === selectedStation)!;
                       return (
                         <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-600/30 flex items-center space-x-3">
-                          <span className="text-2xl">{st.icon}</span>
+                          <div className="p-2 rounded-lg bg-teal-900/50 border border-teal-700/40 text-teal-300">
+                            <st.Icon className="w-5 h-5" />
+                          </div>
                           <div>
                             <p className="text-xs font-bold text-teal-300">{st.label} Station</p>
                             <p className="text-[11px] text-slate-400">{st.desc}</p>
