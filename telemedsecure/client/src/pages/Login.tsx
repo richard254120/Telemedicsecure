@@ -57,6 +57,28 @@ export default function Login() {
 
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
 
+  // Selected station for STAFF portal (must be chosen before login)
+  type StationRole =
+    | 'PHARMACIST'
+    | 'RECEPTIONIST'
+    | 'LAB_TECHNICIAN'
+    | 'RADIOLOGIST'
+    | 'BILLING_OFFICER'
+    | 'TRIAGE_OFFICER'
+    | 'CARE_COORDINATOR'
+    | '';
+  const [selectedStation, setSelectedStation] = useState<StationRole>('');
+
+  const STATION_OPTIONS: { value: StationRole; label: string; icon: string; desc: string; color: string }[] = [
+    { value: 'PHARMACIST',       label: 'Pharmacy',           icon: '💊', desc: 'Dispensing & Medication Review',       color: 'teal'   },
+    { value: 'RECEPTIONIST',     label: 'Reception',          icon: '🗂️', desc: 'Patient Check-in & Scheduling',       color: 'sky'    },
+    { value: 'LAB_TECHNICIAN',   label: 'Laboratory',         icon: '🔬', desc: 'Lab Tests & Specimen Analysis',        color: 'violet' },
+    { value: 'RADIOLOGIST',      label: 'Radiology',          icon: '🩻', desc: 'Imaging & Diagnostic Reports',         color: 'indigo' },
+    { value: 'BILLING_OFFICER',  label: 'Billing',            icon: '🧾', desc: 'Claims, Invoices & Payments',          color: 'amber'  },
+    { value: 'TRIAGE_OFFICER',   label: 'Triage',             icon: '🚨', desc: 'Emergency Prioritisation & Acuity',   color: 'red'    },
+    { value: 'CARE_COORDINATOR', label: 'Care Coordination',  icon: '🤝', desc: 'Case Management & Referrals',          color: 'emerald'},
+  ];
+
   // Verify staff invitation token
   const verifyInvite = async (token: string) => {
     if (!token.trim()) return;
@@ -132,6 +154,7 @@ export default function Login() {
     setSuccessMessage(null);
     setValidationErrors({});
     setIsPatientRegister(false);
+    if (section !== 'STAFF') setSelectedStation('');
   };
 
   const validateForm = () => {
@@ -224,16 +247,18 @@ export default function Login() {
         NURSE:   ['NURSE'],
         ADMIN:   ['ADMIN'],
         PATIENT: ['PATIENT'],
-        // STAFF covers all remaining clinical/operational roles
-        STAFF:   [
-          'PHARMACIST',
-          'RECEPTIONIST',
-          'LAB_TECHNICIAN',
-          'RADIOLOGIST',
-          'BILLING_OFFICER',
-          'TRIAGE_OFFICER',
-          'CARE_COORDINATOR',
-        ],
+        // STAFF: when a station is selected, only that specific station role is allowed
+        STAFF:   selectedStation
+          ? [selectedStation]
+          : [
+              'PHARMACIST',
+              'RECEPTIONIST',
+              'LAB_TECHNICIAN',
+              'RADIOLOGIST',
+              'BILLING_OFFICER',
+              'TRIAGE_OFFICER',
+              'CARE_COORDINATOR',
+            ],
       };
 
       const allowedRoles = portalRoleMap[activeSection] ?? [];
@@ -245,11 +270,18 @@ export default function Login() {
         logout();
 
         const portalLabel: Record<string, string> = {
-          DOCTOR:  'Doctor',
-          NURSE:   'Nurse',
-          ADMIN:   'Admin',
-          PATIENT: 'Patient',
-          STAFF:   'Staff',
+          DOCTOR:          'Doctor',
+          NURSE:           'Nurse',
+          ADMIN:           'Admin',
+          PATIENT:         'Patient',
+          STAFF:           'Staff Stations',
+          PHARMACIST:      'Pharmacy Station',
+          RECEPTIONIST:    'Reception Station',
+          LAB_TECHNICIAN:  'Laboratory Station',
+          RADIOLOGIST:     'Radiology Station',
+          BILLING_OFFICER: 'Billing Station',
+          TRIAGE_OFFICER:  'Triage Station',
+          CARE_COORDINATOR:'Care Coordination Station',
         };
 
         const correctPortal = Object.entries(portalRoleMap).find(([, roles]) =>
@@ -260,8 +292,13 @@ export default function Login() {
           ? ` Please use the ${portalLabel[correctPortal] ?? correctPortal} portal to sign in.`
           : ' Please select the correct portal for your account type.';
 
+        // Name the portal/station the user tried to log into
+        const attemptedLabel = activeSection === 'STAFF' && selectedStation
+          ? (portalLabel[selectedStation] ?? selectedStation)
+          : (portalLabel[activeSection] ?? activeSection);
+
         setError(
-          `Access denied. This is the ${portalLabel[activeSection] ?? activeSection} portal.${hint}`
+          `Access denied. This is the ${attemptedLabel} login.${hint}`
         );
         setPassword(passwordValue);
         setLoading(false);
@@ -806,7 +843,70 @@ export default function Login() {
             /* ============================================================ */
             <div data-lpignore="true">
               <div className="space-y-4">
-                {/* Registration fields for Patient only */}
+                {/* ── STAFF: Station selector dropdown ── */}
+                {activeSection === 'STAFF' && (
+                  <div className="space-y-3">
+                    <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
+                      Select Your Station *
+                    </label>
+                    {/* Collapsed selector button */}
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedStation(selectedStation === '' ? ('' as StationRole) : '' as StationRole)}
+                        className="sr-only"
+                      />
+                      <select
+                        value={selectedStation}
+                        onChange={e => {
+                          setSelectedStation(e.target.value as StationRole);
+                          setError(null);
+                        }}
+                        className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-teal-600/50 text-white text-xs focus:outline-none focus:border-teal-400 appearance-none cursor-pointer"
+                      >
+                        <option value="" disabled>— Choose your clinical station —</option>
+                        {STATION_OPTIONS.map(s => (
+                          <option key={s.value} value={s.value}>
+                            {s.icon}  {s.label} — {s.desc}
+                          </option>
+                        ))}
+                      </select>
+                      <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-teal-400">
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+
+                    {/* Station info card — appears after selection */}
+                    {selectedStation && (() => {
+                      const st = STATION_OPTIONS.find(s => s.value === selectedStation)!;
+                      return (
+                        <div className="p-3 rounded-xl bg-teal-950/40 border border-teal-600/30 flex items-center space-x-3">
+                          <span className="text-2xl">{st.icon}</span>
+                          <div>
+                            <p className="text-xs font-bold text-teal-300">{st.label} Station</p>
+                            <p className="text-[11px] text-slate-400">{st.desc}</p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">
+                              Sign in strictly with your <span className="text-teal-400 font-semibold">{st.label}</span> credentials
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Guard: block login form until a station is chosen */}
+                    {!selectedStation && (
+                      <p className="text-[11px] text-amber-400 flex items-center space-x-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        <span>You must select a station before signing in.</span>
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Hide login fields until station chosen (STAFF only) */}
+                {(activeSection !== 'STAFF' || selectedStation) && (<>
                 {activeSection === 'PATIENT' && isPatientRegister && (
                   <div className="grid grid-cols-2 gap-3 animate-fadeIn">
                     <div>
@@ -849,7 +949,11 @@ export default function Login() {
                 {/* Email Address */}
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1.5">
-                    {activeSection === 'PATIENT' ? 'Patient Email Address *' : `${meta.title} Email *`}
+                    {activeSection === 'PATIENT'
+                      ? 'Patient Email Address *'
+                      : activeSection === 'STAFF' && selectedStation
+                        ? `${STATION_OPTIONS.find(s => s.value === selectedStation)?.label ?? 'Station'} Email *`
+                        : `${meta.title} Email *`}
                   </label>
                   <div className="relative">
                     <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
@@ -860,7 +964,11 @@ export default function Login() {
                       autoComplete="off"
                       className={`w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border text-white placeholder-slate-500 text-xs focus:outline-none ${validationErrors.email ? 'border-red-500' : 'border-slate-800 focus:border-cyan-500'
                         }`}
-                      placeholder={meta.emailPlaceholder}
+                      placeholder={
+                        activeSection === 'STAFF' && selectedStation
+                          ? `${selectedStation.toLowerCase().replace('_', '.')}@telemed.com`
+                          : meta.emailPlaceholder
+                      }
                     />
                   </div>
                   {validationErrors.email && (
@@ -914,12 +1022,19 @@ export default function Login() {
                 <button
                   type="button"
                   onClick={handleLoginSubmit}
-                  disabled={loading}
+                  disabled={loading || (activeSection === 'STAFF' && !selectedStation)}
                   className={`w-full mt-2 py-3 px-4 rounded-xl font-bold text-xs transition shadow-lg bg-gradient-to-r text-white flex items-center justify-center space-x-2 disabled:opacity-50 ${meta.gradient}`}
                 >
                   <KeyRound className="w-4 h-4" />
-                  <span>{loading ? 'Authenticating...' : meta.buttonText}</span>
+                  <span>
+                    {loading
+                      ? 'Authenticating...'
+                      : activeSection === 'STAFF' && selectedStation
+                        ? `Sign In to ${STATION_OPTIONS.find(s => s.value === selectedStation)?.label ?? ''} Station`
+                        : meta.buttonText}
+                  </span>
                 </button>
+                </>)}
               </div>
             </div>
           )}
