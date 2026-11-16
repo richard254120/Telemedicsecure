@@ -28,7 +28,7 @@ export type LoginSection = 'PATIENT' | 'DOCTOR' | 'NURSE' | 'STAFF' | 'ADMIN' | 
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { login } = useAuth();
+  const { login, logout } = useAuth();
 
   // Active section tab: Patient, Doctor, Nurse, Admin, or Invitation Onboarding
   const [activeSection, setActiveSection] = useState<LoginSection>('DOCTOR');
@@ -210,9 +210,66 @@ export default function Login() {
     // the authenticator-app second factor has been removed from the login flow).
     const res = await login(email.trim().toLowerCase(), passwordValue);
     if (res.success) {
-      // Direct navigation to user's authorized role dashboard
+      // ── Role-portal enforcement ──────────────────────────────────────────────
+      // After a successful credential check, verify that the user's actual role
+      // matches the portal they chose.  A doctor must log in via the Doctor tab,
+      // a patient via the Patient tab, etc.  Cross-portal logins are rejected.
       const storedUser = localStorage.getItem('telemed_user');
       const parsed = storedUser ? JSON.parse(storedUser) : null;
+      const actualRole: string = parsed?.role ?? '';
+
+      // Define which roles are permitted for each login section
+      const portalRoleMap: Record<string, string[]> = {
+        DOCTOR:  ['DOCTOR'],
+        NURSE:   ['NURSE'],
+        ADMIN:   ['ADMIN'],
+        PATIENT: ['PATIENT'],
+        // STAFF covers all remaining clinical/operational roles
+        STAFF:   [
+          'PHARMACIST',
+          'RECEPTIONIST',
+          'LAB_TECHNICIAN',
+          'RADIOLOGIST',
+          'BILLING_OFFICER',
+          'TRIAGE_OFFICER',
+          'CARE_COORDINATOR',
+        ],
+      };
+
+      const allowedRoles = portalRoleMap[activeSection] ?? [];
+      const isAllowed = allowedRoles.includes(actualRole);
+
+      if (!isAllowed) {
+        // Role does not belong to this portal — log out immediately and show
+        // a clear, portal-specific error so the user knows where to go.
+        logout();
+
+        const portalLabel: Record<string, string> = {
+          DOCTOR:  'Doctor',
+          NURSE:   'Nurse',
+          ADMIN:   'Admin',
+          PATIENT: 'Patient',
+          STAFF:   'Staff',
+        };
+
+        const correctPortal = Object.entries(portalRoleMap).find(([, roles]) =>
+          roles.includes(actualRole)
+        )?.[0];
+
+        const hint = correctPortal
+          ? ` Please use the ${portalLabel[correctPortal] ?? correctPortal} portal to sign in.`
+          : ' Please select the correct portal for your account type.';
+
+        setError(
+          `Access denied. This is the ${portalLabel[activeSection] ?? activeSection} portal.${hint}`
+        );
+        setPassword(passwordValue);
+        setLoading(false);
+        return;
+      }
+      // ── End role-portal enforcement ──────────────────────────────────────────
+
+      // Navigate to the user's authorised role dashboard
       const rolePath = parsed?.role ? `/${parsed.role.toLowerCase()}` : '/dashboard';
       navigate(rolePath);
     } else {
