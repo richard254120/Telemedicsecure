@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middlewares/auth';
 import { gdprService, DEFAULT_CONSENT_PURPOSES } from '../services/gdpr.service';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { broadcastAdminOps } from '../socket';
+import { canViewPatient } from '../services/panelAccess.service';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -18,7 +19,10 @@ router.get('/consent', async (req: Request, res: Response) => {
   const user = (req as any).user;
   const targetPatientId = (req.query.patientId as string) || user.id;
 
-  if (targetPatientId !== user.id && user.role !== Role.ADMIN && user.role !== Role.DOCTOR) {
+  const isSelf = targetPatientId === user.id;
+  const isAdmin = user.role === Role.ADMIN;
+  const doctorAllowed = user.role === Role.DOCTOR && await canViewPatient(user, targetPatientId);
+  if (!isSelf && !isAdmin && !doctorAllowed) {
     await rulesEngine.triggerViolation({
       ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
       description: `User ${user.id} attempted to view GDPR consents of patient ${targetPatientId}`,

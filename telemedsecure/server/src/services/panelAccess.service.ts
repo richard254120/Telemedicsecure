@@ -2,12 +2,24 @@ import { PrismaClient, Role, CareTeamStatus, AccessGrantStatus } from '@prisma/c
 
 const prisma = new PrismaClient();
 
+/** Live patient-issued token: redeemed, unburned, unexpired. */
+export function liveGrantWhere(granteeId: string) {
+  return {
+    granteeId,
+    status: AccessGrantStatus.ACTIVE,
+    redeemedAt: { not: null },
+    revokedAt: null,
+    burnedAt: null,
+    expiresAt: { gt: new Date() },
+  };
+}
+
 /**
  * Clinician panel-access authorization.
  *
- * A doctor's accessible patients = care-team memberships (role DOCTOR, ACTIVE)
- * ∪ patients with a consultation assigned to them
- * ∪ patients who granted them a redeemed, still-active AccessGrant.
+ * A doctor's accessible patients = only patients who issued them a redeemed,
+ * still-live AccessGrant (time-boxed token). Care-team membership and
+ * consultations do not unlock the chart — the patient must share a token.
  *
  * A nurse's accessible patients = care-team memberships (role NURSE, ACTIVE)
  * ∪ patients who granted them a redeemed, still-active AccessGrant.
@@ -26,13 +38,7 @@ export async function getAccessiblePatientIds(user: any): Promise<string[] | nul
         select: { patientId: true },
       }),
       prisma.accessGrant.findMany({
-        where: {
-          granteeId: user.id,
-          status: AccessGrantStatus.ACTIVE,
-          redeemedAt: { not: null },
-          revokedAt: null,
-          expiresAt: { gt: new Date() },
-        },
+        where: liveGrantWhere(user.id),
         select: { patientId: true },
       }),
     ]);
@@ -44,33 +50,11 @@ export async function getAccessiblePatientIds(user: any): Promise<string[] | nul
   }
 
   if (user.role === Role.DOCTOR) {
-    const [memberships, consultations, grants] = await Promise.all([
-      prisma.careTeamMembership.findMany({
-        where: { clinicianId: user.id, role: 'DOCTOR', status: CareTeamStatus.ACTIVE },
-        select: { patientId: true },
-      }),
-      prisma.consultation.findMany({
-        where: { doctorId: user.id },
-        select: { patientId: true },
-      }),
-      prisma.accessGrant.findMany({
-        where: {
-          granteeId: user.id,
-          status: AccessGrantStatus.ACTIVE,
-          redeemedAt: { not: null },
-          revokedAt: null,
-          expiresAt: { gt: new Date() },
-        },
-        select: { patientId: true },
-      }),
-    ]);
-
-    const ids = [
-      ...memberships.map((m) => m.patientId),
-      ...consultations.map((c) => c.patientId),
-      ...grants.map((g) => g.patientId),
-    ];
-    return Array.from(new Set(ids));
+    const grants = await prisma.accessGrant.findMany({
+      where: liveGrantWhere(user.id),
+      select: { patientId: true },
+    });
+    return Array.from(new Set(grants.map((g) => g.patientId)));
   }
 
   // ADMIN, RECEPTIONIST, station roles, PATIENT: unrestricted / unchanged
@@ -95,12 +79,8 @@ export async function canViewPatient(user: any, patientId: string): Promise<bool
 export async function getActiveGrant(granteeId: string, patientId: string) {
   return prisma.accessGrant.findFirst({
     where: {
-      granteeId,
+      ...liveGrantWhere(granteeId),
       patientId,
-      status: AccessGrantStatus.ACTIVE,
-      redeemedAt: { not: null },
-      revokedAt: null,
-      expiresAt: { gt: new Date() },
     },
     orderBy: { expiresAt: 'desc' },
   });
@@ -133,11 +113,7 @@ export async function logPatientAccess(params: {
     // Touch the grant's lastAccessAt when this read rode on a temporary grant.
     if (params.resourceType === 'MEDICAL_RECORD' || params.action === 'READ_MEDICAL_RECORD') {
       const grant = await prisma.accessGrant.findFirst({
-        where: {
-          granteeId: params.viewerId,
-          patientId: params.patientId,
-          status: AccessGrantStatus.ACTIVE,
-        },
+        where: { ...liveGrantWhere(params.viewerId), patientId: params.patientId },
       });
       if (grant) {
         await prisma.accessGrant.update({

@@ -50,3 +50,15 @@ export const broadcastAdminOps = (kind: string, meta: Record<string, unknown> = 
   ioInstance.to('admins').emit('admin-live-event', event);
   ioInstance.to('role-ADMIN').emit('admin-live-event', event);
 };
+
+/**
+ * Tell a clinician their patient-issued token was burned. The payload carries
+ * identifiers only — no PHI — so the doctor's station can drop the chart from
+ * memory immediately.
+ */
+export const emitAccessBurned = (granteeId: string, payload: { grantId: string; patientId: string }) => {
+  if (!ioInstance || !granteeId) return;
+  const event = { ...payload, withdrawn: true, timestamp: new Date().toISOString() };
+  ioInstance.to(`user-${granteeId}`).emit('access-burned', event);
+  ioInstance.to(`doctor-${granteeId}`).emit('access-burned', event);
+};

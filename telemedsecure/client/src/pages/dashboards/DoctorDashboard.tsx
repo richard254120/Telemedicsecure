@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { API_BASE, WS_URL } from '../../config';
@@ -46,7 +46,8 @@ import {
   XCircle,
   CalendarClock,
   LayoutDashboard,
-  ClipboardList
+  ClipboardList,
+  Flame
 } from 'lucide-react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
@@ -104,6 +105,29 @@ export default function DoctorDashboard() {
 
   // Patient Selection & Search
   const [selectedPatientId, setSelectedPatientId] = useState<string>('');
+  const selectedPatientIdRef = useRef(selectedPatientId);
+
+  useEffect(() => {
+    selectedPatientIdRef.current = selectedPatientId;
+  }, [selectedPatientId]);
+
+  const purgePatientFromStation = (patientId: string, grantId?: string) => {
+    setPatients((prev) => prev.filter((p) => p.id !== patientId));
+    setMedicalRecords((prev) => prev.filter((r) => r.patientId !== patientId));
+    setClinicalFlags((prev) => prev.filter((f) => f.consultation?.patientId !== patientId && f.patientId !== patientId));
+    setSharedGrants((prev) => prev.map((g) => {
+      if (g.id === grantId || g.patient?.id === patientId) {
+        return { ...g, patient: null, withdrawn: true, effectiveStatus: 'BURNED', purpose: null, lastAccessAt: null };
+      }
+      return g;
+    }));
+    if (selectedPatientIdRef.current === patientId) {
+      setSelectedPatientId('');
+      setShowChatDrawer(false);
+      setCareTeam([]);
+    }
+    setActionError('The patient burned their access token. Their details have been removed from your station.');
+  };
   const [patientSearch, setPatientSearch] = useState<string>('');
 
   // Modals for Clinical Duties
@@ -243,6 +267,11 @@ export default function DoctorDashboard() {
         userId: user.id,
         role: user.role
       });
+    });
+
+    socket.on('access-burned', (event: { patientId?: string; grantId?: string }) => {
+      if (event?.patientId) purgePatientFromStation(event.patientId, event.grantId);
+      fetchDoctorData();
     });
 
     socket.on('clinical-notification', (notif: any) => {
@@ -443,8 +472,9 @@ export default function DoctorDashboard() {
     setActionSuccess(null);
     try {
       const data = await apiPost<{ patient: any }>(getAuthHeaders, '/access/redeem', { code: redeemCode }, 'Failed to redeem access key');
-      setActionSuccess(`Access granted to ${data.patient?.firstName ?? 'patient'} for this window.`);
+      setActionSuccess(`Access granted to ${data.patient?.firstName ?? 'patient'} until the token expires or the patient burns it.`);
       setRedeemCode('');
+      if (data.patient?.id) setSelectedPatientId(data.patient.id);
       fetchDoctorData();
     } catch (e) {
       setActionError(errorMessage(e, 'Invalid or expired access key'));

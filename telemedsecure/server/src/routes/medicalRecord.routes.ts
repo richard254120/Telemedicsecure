@@ -133,6 +133,17 @@ router.post('/', requireRole([Role.DOCTOR, Role.NURSE, Role.LAB_TECHNICIAN, Role
     });
   }
 
+  if (user.role === Role.DOCTOR && !(await canViewPatient(user, patientId))) {
+    await rulesEngine.triggerViolation({
+      ruleId: 'ACCESS_OUTSIDE_ROLE_ASSIGNMENT',
+      description: `Doctor ${user.email} attempted to write a medical record for patient ${patientId} without a live access token.`,
+      userId: user.id,
+      sourceIp: req.ip,
+      resource: `Patient:${patientId}`,
+    });
+    return res.status(403).json({ error: 'Access denied: Patient must share a live access token before you can view or write their chart.' });
+  }
+
   // 3. Off-hours check
   if (rulesEngine.isOffHours() || req.headers['x-simulate-off-hours'] === 'true') {
     await rulesEngine.triggerViolation({

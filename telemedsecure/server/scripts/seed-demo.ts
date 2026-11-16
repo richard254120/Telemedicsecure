@@ -333,10 +333,39 @@ async function seedDemo() {
     },
   });
 
+  const attendingCode = 'JNKN-ATND-ALCE';
+  await prisma.accessGrant.upsert({
+    where: { tokenHash: crypto.createHash('sha256').update(attendingCode).digest('hex') },
+    update: {
+      status: AccessGrantStatus.ACTIVE,
+      redeemedAt: new Date(),
+      revokedAt: null,
+      burnedAt: null,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+    create: {
+      patientId: patient.id,
+      granteeId: doctor.id,
+      granteeRole: Role.DOCTOR,
+      tokenHash: crypto.createHash('sha256').update(attendingCode).digest('hex'),
+      scope: 'RECORDS_READ',
+      purpose: 'Attending physician chart access',
+      status: AccessGrantStatus.ACTIVE,
+      redeemedAt: new Date(),
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+    },
+  });
+
   const sampleCode = 'K7M2-QP9X-4TZR';
   await prisma.accessGrant.upsert({
     where: { tokenHash: crypto.createHash('sha256').update(sampleCode).digest('hex') },
-    update: { status: AccessGrantStatus.ACTIVE, redeemedAt: new Date(), expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000) },
+    update: {
+      status: AccessGrantStatus.ACTIVE,
+      redeemedAt: new Date(),
+      revokedAt: null,
+      burnedAt: null,
+      expiresAt: new Date(Date.now() + 72 * 60 * 60 * 1000),
+    },
     create: {
       patientId: patient.id,
       granteeId: specialist.id,

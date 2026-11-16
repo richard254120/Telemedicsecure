@@ -1,3 +1,7 @@
+html {
+  font-size: 137.5%; /* 22px base (default is 16px) — scales all rem values */
+}
+
 :root {
   --primary-color: #0d1b2a;
   --secondary-color: #1b263b;

@@ -5,6 +5,7 @@ import { requireAuth, requireRole } from '../middlewares/auth';
 import { createChainedAuditEvent } from '../services/audit.service';
 import { rulesEngine } from '../services/rulesEngine.service';
 import { notify } from '../services/notification.service';
+import { emitAccessBurned } from '../socket';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -12,26 +13,16 @@ const prisma = new PrismaClient();
 router.use(requireAuth);
 
 const TTL_MS: Record<string, number> = {
+  '15m': 15 * 60 * 1000,
   '1h': 60 * 60 * 1000,
+  '4h': 4 * 60 * 60 * 1000,
   '24h': 24 * 60 * 60 * 1000,
   '72h': 72 * 60 * 60 * 1000,
   '7d': 7 * 24 * 60 * 60 * 1000,
 };
 
-// Any authenticated staff member (everyone except the patient themselves) may be
-// issued a key and may redeem one. This generalises the old doctor-only model.
-const STAFF_ROLES: Role[] = [
-  Role.DOCTOR,
-  Role.NURSE,
-  Role.PHARMACIST,
-  Role.RECEPTIONIST,
-  Role.ADMIN,
-  Role.LAB_TECHNICIAN,
-  Role.RADIOLOGIST,
-  Role.BILLING_OFFICER,
-  Role.TRIAGE_OFFICER,
-  Role.CARE_COORDINATOR,
-];
+/** Only medical officers may redeem a patient-issued chart token. */
+const MEDICAL_OFFICER_ROLES: Role[] = [Role.DOCTOR, Role.NURSE];
 
 // RFC-4648 base32 alphabet (no padding): unambiguous, human-readable codes.
 const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
@@ -54,16 +45,27 @@ const patientSelect = { id: true, firstName: true, lastName: true, email: true }
 const displayName = (u: any) =>
   u?.role === Role.DOCTOR ? `Dr. ${u.lastName}` : `${u.firstName} ${u.lastName}`;
 
+function grantEffectiveStatus(g: { status: AccessGrantStatus; expiresAt: Date; burnedAt: Date | null }) {
+  if (g.status === AccessGrantStatus.BURNED || g.burnedAt) return AccessGrantStatus.BURNED;
+  if (g.status === AccessGrantStatus.REVOKED) return AccessGrantStatus.REVOKED;
+  if (g.expiresAt.getTime() <= Date.now()) return AccessGrantStatus.EXPIRED;
+  return g.status;
+}
+
+function isGrantDead(status: AccessGrantStatus) {
+  return status === AccessGrantStatus.BURNED
+    || status === AccessGrantStatus.REVOKED
+    || status === AccessGrantStatus.EXPIRED;
+}
+
 /**
  * GET /api/v1/access/grantees  (PATIENT)
- * Directory of active staff the patient may bind an access key to. Deliberately
- * broader than the old doctors-only picker so a nurse, pharmacist, etc. can be
- * authorised to view the patient's full record.
+ * Directory of medical officers the patient may bind a chart token to.
  */
 router.get('/grantees', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
   try {
     const grantees = await prisma.user.findMany({
-      where: { role: { not: Role.PATIENT }, isActive: true },
+      where: { role: { in: MEDICAL_OFFICER_ROLES }, isActive: true },
       select: granteeSelect,
       orderBy: [{ role: 'asc' }, { lastName: 'asc' }],
     });
@@ -86,13 +88,13 @@ router.post('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Re
     const granteeId = rawGranteeId || doctorId;
 
     if (!granteeId) return res.status(400).json({ error: 'granteeId is required' });
-    if (!TTL_MS[ttl]) return res.status(400).json({ error: 'ttl must be one of 1h, 24h, 72h, 7d' });
+    if (!TTL_MS[ttl]) return res.status(400).json({ error: 'ttl must be one of 15m, 1h, 4h, 24h, 72h, 7d' });
 
     const grantee = await prisma.user.findFirst({
-      where: { id: granteeId, role: { not: Role.PATIENT }, isActive: true },
+      where: { id: granteeId, role: { in: MEDICAL_OFFICER_ROLES }, isActive: true },
       select: granteeSelect,
     });
-    if (!grantee) return res.status(404).json({ error: 'Selected staff member not found or inactive' });
+    if (!grantee) return res.status(404).json({ error: 'Selected medical officer not found or inactive' });
 
     const code = generateCode();
     const tokenHash = hashToken(code);
@@ -147,7 +149,6 @@ router.get('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Res
       orderBy: { createdAt: 'desc' },
     });
 
-    const now = Date.now();
     res.json(grants.map((g) => ({
       id: g.id,
       grantee: g.grantee,
@@ -155,14 +156,12 @@ router.get('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Res
       scope: g.scope,
       purpose: g.purpose,
       status: g.status,
-      // Surface real state: an ACTIVE row past expiry reads as EXPIRED to callers.
-      effectiveStatus: g.status === AccessGrantStatus.ACTIVE && g.expiresAt.getTime() <= now
-        ? AccessGrantStatus.EXPIRED
-        : g.status,
+      effectiveStatus: grantEffectiveStatus(g),
       redeemed: Boolean(g.redeemedAt),
       redeemedAt: g.redeemedAt,
       lastAccessAt: g.lastAccessAt,
       expiresAt: g.expiresAt,
+      burnedAt: g.burnedAt,
       createdAt: g.createdAt,
     })));
   } catch (err: any) {
@@ -170,40 +169,83 @@ router.get('/grants', requireRole([Role.PATIENT]), async (req: Request, res: Res
   }
 });
 
+async function burnGrant(params: {
+  grantId: string;
+  patientId: string;
+  user: any;
+  ipAddress: string;
+}) {
+  const grant = await prisma.accessGrant.findFirst({
+    where: { id: params.grantId, patientId: params.patientId },
+    include: { grantee: { select: granteeSelect } },
+  });
+  if (!grant) return null;
+
+  const now = new Date();
+  const updated = await prisma.accessGrant.update({
+    where: { id: grant.id },
+    data: {
+      status: AccessGrantStatus.BURNED,
+      revokedAt: grant.revokedAt || now,
+      burnedAt: now,
+    },
+  });
+
+  await createChainedAuditEvent({
+    action: 'ACCESS_GRANT_BURNED',
+    resource: `AccessGrant:${grant.id}`,
+    userId: params.user.id,
+    ipAddress: params.ipAddress,
+  });
+
+  emitAccessBurned(grant.granteeId, { grantId: grant.id, patientId: grant.patientId });
+
+  await notify({
+    userId: grant.granteeId,
+    type: NotificationType.ACCESS_REVOKED,
+    title: 'Patient token burned',
+    body: `${params.user.firstName} ${params.user.lastName} burned their access token. Their details have been withdrawn from your station.`,
+    link: `/doctor?tab=shared`,
+  });
+
+  return updated;
+}
+
+/**
+ * POST /api/v1/access/grants/:id/burn  (PATIENT)
+ * Immediately destroy the token. The doctor's station is told to drop the chart.
+ */
+router.post('/grants/:id/burn', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const updated = await burnGrant({
+      grantId: String(req.params.id),
+      patientId: user.id,
+      user,
+      ipAddress: req.ip || 'unknown',
+    });
+    if (!updated) return res.status(404).json({ error: 'Grant not found' });
+    res.json({ id: updated.id, status: updated.status, burnedAt: updated.burnedAt, revokedAt: updated.revokedAt });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to burn access token', details: err.message });
+  }
+});
+
 /**
  * POST /api/v1/access/grants/:id/revoke  (PATIENT)
- * Cut a grant's access immediately. Checked on every subsequent read.
+ * Alias of burn — cutting the token withdraws the chart immediately.
  */
 router.post('/grants/:id/revoke', requireRole([Role.PATIENT]), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    const grant = await prisma.accessGrant.findFirst({
-      where: { id: String(req.params.id), patientId: user.id },
-      include: { grantee: { select: granteeSelect } },
-    });
-    if (!grant) return res.status(404).json({ error: 'Grant not found' });
-
-    const updated = await prisma.accessGrant.update({
-      where: { id: grant.id },
-      data: { status: AccessGrantStatus.REVOKED, revokedAt: new Date() },
-    });
-
-    await createChainedAuditEvent({
-      action: 'ACCESS_GRANT_REVOKED',
-      resource: `AccessGrant:${grant.id}`,
-      userId: user.id,
+    const updated = await burnGrant({
+      grantId: String(req.params.id),
+      patientId: user.id,
+      user,
       ipAddress: req.ip || 'unknown',
     });
-
-    await notify({
-      userId: grant.granteeId,
-      type: NotificationType.ACCESS_REVOKED,
-      title: 'Access key revoked',
-      body: `${user.firstName} ${user.lastName} revoked the access key issued to you.`,
-      link: `/dashboard?tab=shared`,
-    });
-
-    res.json({ id: updated.id, status: updated.status, revokedAt: updated.revokedAt });
+    if (!updated) return res.status(404).json({ error: 'Grant not found' });
+    res.json({ id: updated.id, status: updated.status, burnedAt: updated.burnedAt, revokedAt: updated.revokedAt });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to revoke access grant', details: err.message });
   }
@@ -224,8 +266,9 @@ router.post('/grants/:id/regenerate', requireRole([Role.PATIENT]), async (req: R
 
     await prisma.accessGrant.update({
       where: { id: grant.id },
-      data: { status: AccessGrantStatus.REVOKED, revokedAt: new Date() },
+      data: { status: AccessGrantStatus.BURNED, revokedAt: new Date(), burnedAt: new Date() },
     });
+    emitAccessBurned(grant.granteeId, { grantId: grant.id, patientId: grant.patientId });
 
     const code = generateCode();
     const tokenHash = hashToken(code);
@@ -262,7 +305,7 @@ router.post('/grants/:id/regenerate', requireRole([Role.PATIENT]), async (req: R
  * Redeem a patient-issued code bound to this staff member. Sets redeemedAt so
  * the chart becomes readable for the remainder of the window.
  */
-router.post('/redeem', requireRole(STAFF_ROLES), async (req: Request, res: Response) => {
+router.post('/redeem', requireRole(MEDICAL_OFFICER_ROLES), async (req: Request, res: Response) => {
   const user = (req as any).user;
   const code = normalizeCode(req.body?.code);
   const fail = async () => {
@@ -290,6 +333,7 @@ router.post('/redeem', requireRole(STAFF_ROLES), async (req: Request, res: Respo
       grant.granteeId !== user.id ||
       grant.status !== AccessGrantStatus.ACTIVE ||
       grant.revokedAt ||
+      grant.burnedAt ||
       grant.expiresAt.getTime() <= Date.now()
     ) {
       return await fail();
@@ -337,7 +381,7 @@ router.post('/redeem', requireRole(STAFF_ROLES), async (req: Request, res: Respo
  * Every grant bound to this staff member, so the UI can distinguish "awaiting
  * key" (issued but not yet redeemed) from an unlocked, counting-down window.
  */
-router.get('/shared-with-me', requireRole(STAFF_ROLES), async (req: Request, res: Response) => {
+router.get('/shared-with-me', requireRole(MEDICAL_OFFICER_ROLES), async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
     const grants = await prisma.accessGrant.findMany({
@@ -346,21 +390,24 @@ router.get('/shared-with-me', requireRole(STAFF_ROLES), async (req: Request, res
       orderBy: { createdAt: 'desc' },
     });
 
-    const now = Date.now();
-    res.json(grants.map((g) => ({
-      id: g.id,
-      patient: g.patient,
-      scope: g.scope,
-      purpose: g.purpose,
-      status: g.status,
-      effectiveStatus: g.status === AccessGrantStatus.ACTIVE && g.expiresAt.getTime() <= now
-        ? AccessGrantStatus.EXPIRED
-        : g.status,
-      redeemed: Boolean(g.redeemedAt),
-      expiresAt: g.expiresAt,
-      lastAccessAt: g.lastAccessAt,
-      createdAt: g.createdAt,
-    })));
+    res.json(grants.map((g) => {
+      const effectiveStatus = grantEffectiveStatus(g);
+      const withdrawn = isGrantDead(effectiveStatus);
+      return {
+        id: g.id,
+        // Burned / expired tokens must not keep patient details on the doctor's station.
+        patient: withdrawn ? null : g.patient,
+        withdrawn,
+        scope: g.scope,
+        purpose: withdrawn ? null : g.purpose,
+        status: g.status,
+        effectiveStatus,
+        redeemed: Boolean(g.redeemedAt),
+        expiresAt: g.expiresAt,
+        lastAccessAt: withdrawn ? null : g.lastAccessAt,
+        createdAt: g.createdAt,
+      };
+    }));
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to list shared-with-me grants', details: err.message });
   }

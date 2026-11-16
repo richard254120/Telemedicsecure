@@ -33,7 +33,8 @@ import {
   ClipboardCheck,
   Users,
   ShieldAlert,
-  Ban
+  Ban,
+  Flame
 } from 'lucide-react';
 import { PrescriptionDocumentModal } from '../../components/PrescriptionDocumentModal';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
@@ -69,7 +70,7 @@ export default function PatientDashboard() {
   const [accessBusy, setAccessBusy] = useState(false);
   const [issueGranteeId, setIssueGranteeId] = useState('');
   const [grantees, setGrantees] = useState<any[]>([]);
-  const [issueTtl, setIssueTtl] = useState<'1h' | '24h' | '72h' | '7d'>('24h');
+  const [issueTtl, setIssueTtl] = useState<'15m' | '1h' | '4h' | '24h' | '72h' | '7d'>('24h');
   const [issuePurpose, setIssuePurpose] = useState('');
   const [issuedCode, setIssuedCode] = useState<string | null>(null);
   const [teamClinicianId, setTeamClinicianId] = useState('');
@@ -154,7 +155,7 @@ export default function PatientDashboard() {
 
   const handleIssueGrant = async () => {
     if (!issueGranteeId) {
-      setActionMessage('Select a staff member to share your record with.');
+      setActionMessage('Select the doctor who should receive your access token.');
       return;
     }
     setAccessBusy(true);
@@ -175,13 +176,15 @@ export default function PatientDashboard() {
     }
   };
 
-  const handleRevokeGrant = async (grantId: string) => {
+  const handleBurnGrant = async (grantId: string) => {
     setAccessBusy(true);
     try {
-      await apiPost(getAuthHeaders, `/access/grants/${grantId}/revoke`, {}, 'Failed to revoke access');
+      await apiPost(getAuthHeaders, `/access/grants/${grantId}/burn`, {}, 'Failed to burn token');
+      setActionMessage('Token burned. The doctor can no longer see your details.');
+      setTimeout(() => setActionMessage(null), 5000);
       fetchCareAccess();
     } catch (e) {
-      setActionMessage(errorMessage(e, 'Failed to revoke access'));
+      setActionMessage(errorMessage(e, 'Failed to burn token'));
     } finally {
       setAccessBusy(false);
     }
@@ -418,7 +421,7 @@ export default function PatientDashboard() {
     { id: 'prescriptions', label: 'Prescriptions', caption: 'Signed e-prescriptions', group: 'Patient Portal', icon: Pill },
     { id: 'billing', label: 'Billing & Copays', caption: 'Invoices & statements', group: 'Patient Portal', icon: CreditCard },
     { id: 'consent', label: 'GDPR Consent & Privacy', caption: 'Consent & data rights', group: 'Patient Portal', icon: Shield },
-    { id: 'access', label: 'Care & Access', caption: 'Care team, shared keys, access log', group: 'Patient Portal', icon: KeyRound },
+    { id: 'access', label: 'Share Access', caption: 'Issue, time-limit, and burn tokens', group: 'Patient Portal', icon: KeyRound },
   ];
   const nav: NavGroup[] = [{ name: 'Patient Portal', tabs: patientTabs }, VERIFICATION_GROUP];
   const counts: Record<string, CountChip> = {
@@ -427,7 +430,7 @@ export default function PatientDashboard() {
     prescriptions: { value: prescriptions.length, status: 'success' },
     billing: { value: patientInvoices.filter(i => i.status === 'PENDING').length, status: 'success' },
     consent: { value: consents.length, status: 'success' },
-    access: { value: careTeam.length, status: 'success' },
+    access: { value: grants.filter((g) => g.effectiveStatus === 'ACTIVE').length, status: 'success' },
   };
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const joinActiveCall = () => {
@@ -999,10 +1002,10 @@ export default function PatientDashboard() {
             <div>
               <h2 className="text-lg font-bold text-white flex items-center space-x-2">
                 <KeyRound className="w-5 h-5 text-cyan-400" />
-                <span>Care Team & Record Access</span>
+                <span>Share Access With a Doctor</span>
               </h2>
               <p className="text-xs text-slate-400">
-                Manage who is on your care team, share your chart with a physician through a temporary key, and review who viewed your records.
+                Doctors cannot open your chart unless you share a token. Set how long it lasts, then burn it at any time — their view of your details is withdrawn immediately.
               </p>
             </div>
 
@@ -1051,12 +1054,12 @@ export default function PatientDashboard() {
             </Panel>
 
             {/* Issue access key */}
-            <Panel title="Share My Record (Temporary Access Key)" icon={KeyRound} description="Grant one staff member time-boxed read access. The code is bound to that person and shown only once.">
+            <Panel title="Issue a time-limited token" icon={KeyRound} description="The token is bound to one doctor, shown once, and stops working when it expires or you burn it.">
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Field label="Staff member" required>
+                  <Field label="Doctor / medical officer" required>
                     <select value={issueGranteeId} onChange={(e) => setIssueGranteeId(e.target.value)} className={INPUT_CLASS}>
-                      <option value="">Select a staff member…</option>
+                      <option value="">Select a doctor…</option>
                       {grantees.map((g) => (
                         <option key={g.id} value={g.id}>{g.role === 'DOCTOR' ? 'Dr. ' : ''}{g.firstName} {g.lastName}{g.specialty ? ` — ${g.specialty}` : ` — ${String(g.role).replace(/_/g, ' ').toLowerCase()}`}</option>
                       ))}
@@ -1064,7 +1067,9 @@ export default function PatientDashboard() {
                   </Field>
                   <Field label="Access window" required>
                     <select value={issueTtl} onChange={(e) => setIssueTtl(e.target.value as any)} className={INPUT_CLASS}>
+                      <option value="15m">15 minutes</option>
                       <option value="1h">1 hour</option>
+                      <option value="4h">4 hours</option>
                       <option value="24h">24 hours</option>
                       <option value="72h">72 hours</option>
                       <option value="7d">7 days</option>
@@ -1075,15 +1080,15 @@ export default function PatientDashboard() {
                   <input value={issuePurpose} onChange={(e) => setIssuePurpose(e.target.value)} placeholder="e.g. Second opinion on my lab results" className={INPUT_CLASS} />
                 </Field>
                 <div className="flex justify-end">
-                  <Button variant="primary" icon={KeyRound} onClick={handleIssueGrant} busy={accessBusy} disabled={!issueGranteeId}>Issue Access Key</Button>
+                  <Button variant="primary" icon={KeyRound} onClick={handleIssueGrant} busy={accessBusy} disabled={!issueGranteeId}>Create token</Button>
                 </div>
                 {issuedCode && (
                   <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/5 p-4 space-y-2">
                     <p className="text-xs font-semibold text-emerald-300 flex items-center space-x-1.5">
                       <CheckCircle2 className="w-4 h-4" />
-                      <span>Share this code securely — it is shown only once.</span>
+                      <span>Share this token with your doctor only — it is shown once.</span>
                     </p>
-                    <SecretField label="One-time access code" value={issuedCode} />
+                    <SecretField label="Access token" value={issuedCode} />
                     <div className="flex justify-end">
                       <Button variant="ghost" icon={X} onClick={() => setIssuedCode(null)}>Dismiss</Button>
                     </div>
@@ -1093,16 +1098,16 @@ export default function PatientDashboard() {
             </Panel>
 
             {/* Grants list */}
-            <Panel title="Access Grants" icon={ShieldCheck} description="Every key you have issued. Revoke cuts access immediately.">
+            <Panel title="Issued tokens" icon={ShieldCheck} description="Burn a live token to pull your details off the doctor's station immediately.">
               {grants.length === 0 ? (
-                <EmptyState icon={KeyRound} title="No access keys issued" description="Issued keys and their status will appear here." />
+                <EmptyState icon={KeyRound} title="No tokens issued" description="Create a token above, then share it with your doctor." />
               ) : (
                 <div className="grid gap-2">
                   {grants.map((g) => {
                     const expired = new Date(g.expiresAt).getTime() <= Date.now();
-                    const isRevoked = g.effectiveStatus === 'REVOKED';
-                    const tone = isRevoked ? 'danger' : expired ? 'neutral' : g.redeemed ? 'info' : 'purple';
-                    const label = isRevoked ? 'REVOKED' : expired ? 'EXPIRED' : g.redeemed ? 'IN USE' : 'AWAITING REDEEM';
+                    const isBurned = g.effectiveStatus === 'BURNED' || g.effectiveStatus === 'REVOKED';
+                    const tone = isBurned ? 'danger' : expired ? 'neutral' : g.redeemed ? 'info' : 'purple';
+                    const label = isBurned ? 'BURNED' : expired ? 'EXPIRED' : g.redeemed ? 'IN USE' : 'AWAITING REDEEM';
                     return (
                       <div key={g.id} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 rounded-xl border border-slate-800 bg-slate-900/60 px-4 py-3">
                         <div className="min-w-0">
@@ -1117,10 +1122,10 @@ export default function PatientDashboard() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <Badge tone={tone as any}>{label}</Badge>
-                          {!isRevoked && !expired && (
+                          {!isBurned && !expired && (
                             <>
-                              <Button variant="ghost" icon={RefreshCw} onClick={() => handleRegenerateGrant(g.id)} busy={accessBusy}>Regenerate</Button>
-                              <Button variant="danger" icon={X} onClick={() => handleRevokeGrant(g.id)} busy={accessBusy}>Revoke</Button>
+                              <Button variant="ghost" icon={RefreshCw} onClick={() => handleRegenerateGrant(g.id)} busy={accessBusy}>New token</Button>
+                              <Button variant="danger" icon={Flame} onClick={() => handleBurnGrant(g.id)} busy={accessBusy}>Burn</Button>
                             </>
                           )}
                         </div>
