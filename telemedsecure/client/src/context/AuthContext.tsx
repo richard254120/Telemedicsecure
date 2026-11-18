@@ -46,6 +46,7 @@ export interface AuthUser {
   medicalLicenseNo?: string | null;
   licenseJurisdiction?: string | null;
   specialty?: string | null;
+  mustChangePassword?: boolean;
 }
 
 interface AuthContextType {

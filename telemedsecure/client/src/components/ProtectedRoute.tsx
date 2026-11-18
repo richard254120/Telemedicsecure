@@ -1,7 +1,8 @@
-import React from 'react';
-import { Navigate, Link } from 'react-router-dom';
+import React, { useCallback } from 'react';
+import { Navigate, Link, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
-import { ShieldAlert, ArrowLeft, RefreshCw, UserCheck } from 'lucide-react';
+import { ShieldAlert, ArrowLeft } from 'lucide-react';
+import ForcePasswordChange from './ForcePasswordChange';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -10,7 +11,9 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowedRoles }) => {
   const { user, isLoading } = useAuth();
+  const navigate = useNavigate();
 
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-slate-300">
@@ -20,10 +23,37 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, allowe
     );
   }
 
+  // ── Not authenticated ──────────────────────────────────────────────────────
   if (!user) {
     return <Navigate to="/login" replace />;
   }
 
+  // ── Force password change gate ─────────────────────────────────────────────
+  // When an admin-created account logs in for the first time (or after a
+  // security-policy reset), every API endpoint returns 403 "Password change
+  // required".  Intercept here so the user sees a proper form rather than a
+  // series of "This panel could not be loaded" errors.
+  if (user.mustChangePassword) {
+    const onComplete = () => {
+      // The server already cleared the flag; update the cached user object so
+      // this gate doesn't re-appear on the next render.
+      const stored = localStorage.getItem('telemed_user');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          parsed.mustChangePassword = false;
+          localStorage.setItem('telemed_user', JSON.stringify(parsed));
+        } catch {
+          // ignore
+        }
+      }
+      navigate(`/${user.role.toLowerCase()}`, { replace: true });
+    };
+
+    return <ForcePasswordChange onComplete={onComplete} />;
+  }
+
+  // ── Wrong role ─────────────────────────────────────────────────────────────
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     return (
       <div className="min-h-[80vh] bg-slate-900 flex items-center justify-center p-6">
