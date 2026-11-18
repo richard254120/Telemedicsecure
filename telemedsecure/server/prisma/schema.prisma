@@ -558,6 +558,7 @@ model LabOrder {
   technicianId      String?
   testName          String
   specimenType      String
+  priority          String         @default("ROUTINE")
   status            LabOrderStatus @default(ORDERED)
   findings          String?
   referenceRange    String?

@@ -625,6 +625,7 @@ router.post('/care-coordination/plans', requireRole([Role.CARE_COORDINATOR, Role
         riskLevel: riskLevel || 'MEDIUM',
         status: CarePlanStatus.ACTIVE,
         nextReviewDate: reviewDate,
+        adherencePercent: 100,
         tasks: {
           create: [
             {
@@ -836,11 +837,11 @@ router.post('/seed-demo-data', async (req: Request, res: Response) => {
 
     // 5. Medication Stock
     const meds = [
-      { ndc: '00378-0135-01', name: 'Metformin HCl', genericName: 'Metformin', strength: '500mg', stockQuantity: 280, unitPrice: 8.50 },
-      { ndc: '00006-0740-54', name: 'Lisinopril', genericName: 'Lisinopril', strength: '10mg', stockQuantity: 195, unitPrice: 11.20 },
-      { ndc: '00093-2264-01', name: 'Amoxicillin Trihydrate', genericName: 'Amoxicillin', strength: '500mg', stockQuantity: 140, unitPrice: 14.00 },
-      { ndc: '00071-0156-23', name: 'Atorvastatin Calcium', genericName: 'Atorvastatin', strength: '20mg', stockQuantity: 220, unitPrice: 18.50 },
-      { ndc: '59310-579-20', name: 'Albuterol Sulfate Inhaler', genericName: 'Albuterol', strength: '90mcg/actuation', stockQuantity: 45, unitPrice: 32.00 }
+      { ndc: '00378-0135-01', name: 'Metformin HCl', genericName: 'Metformin', strength: '500mg', stockQuantity: 280, reorderLevel: 50, unitPrice: 8.50, manufacturer: 'Teva Pharmaceuticals' },
+      { ndc: '00006-0740-54', name: 'Lisinopril', genericName: 'Lisinopril', strength: '10mg', stockQuantity: 195, reorderLevel: 40, unitPrice: 11.20, manufacturer: 'AstraZeneca' },
+      { ndc: '00093-2264-01', name: 'Amoxicillin Trihydrate', genericName: 'Amoxicillin', strength: '500mg', stockQuantity: 140, reorderLevel: 30, unitPrice: 14.00, manufacturer: 'Teva Pharmaceuticals' },
+      { ndc: '00071-0156-23', name: 'Atorvastatin Calcium', genericName: 'Atorvastatin', strength: '20mg', stockQuantity: 220, reorderLevel: 45, unitPrice: 18.50, manufacturer: 'Pfizer' },
+      { ndc: '59310-579-20', name: 'Albuterol Sulfate Inhaler', genericName: 'Albuterol', strength: '90mcg/actuation', stockQuantity: 45, reorderLevel: 15, unitPrice: 32.00, manufacturer: 'GSK' }
     ];
 
     for (const m of meds) {
@@ -848,7 +849,14 @@ router.post('/seed-demo-data', async (req: Request, res: Response) => {
         where: { ndc: m.ndc },
         update: {},
         create: {
-          ...m,
+          ndc: m.ndc,
+          name: m.name,
+          genericName: m.genericName,
+          strength: m.strength,
+          stockQuantity: m.stockQuantity,
+          reorderLevel: m.reorderLevel,
+          unitPrice: m.unitPrice,
+          manufacturer: m.manufacturer,
           dosageForm: m.name.includes('Inhaler') ? 'INHALER' : 'TABLET',
           expiryDate: new Date(Date.now() + 450 * 86400000)
         }

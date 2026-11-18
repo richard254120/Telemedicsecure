@@ -44,7 +44,7 @@ import {
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type LabStatus = 'ORDERED' | 'SAMPLE_COLLECTED' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED';
-type Priority  = 'STAT' | 'ROUTINE';
+type Priority = 'STAT' | 'ROUTINE';
 
 interface Analyte {
   name: string;
@@ -77,34 +77,34 @@ interface LabOrder {
 // ─── Catalogue of diagnostic panels ──────────────────────────────────────────
 
 const PANEL_CATALOGUE = [
-  { group: 'Haematology',       name: 'Complete Blood Count (CBC) with Differential',         specimen: 'Venous Blood (EDTA — Purple Top)',     analytes: ['WBC','RBC','Hgb','Hct','MCV','MCH','MCHC','RDW','Platelets','Neutrophils %','Lymphocytes %','Monocytes %','Eosinophils %','Basophils %'] },
-  { group: 'Haematology',       name: 'Prothrombin Time / INR (PT/INR)',                        specimen: 'Citrated Plasma (Blue Top)',           analytes: ['PT (sec)','INR','APTT (sec)'] },
-  { group: 'Chemistry',         name: 'Comprehensive Metabolic Panel (CMP)',                   specimen: 'Serum (SST — Gold Top)',               analytes: ['Glucose','BUN','Creatinine','eGFR','Na⁺','K⁺','Cl⁻','CO₂','Ca²⁺','Total Protein','Albumin','Total Bilirubin','ALT','AST','ALP'] },
-  { group: 'Chemistry',         name: 'Basic Metabolic Panel (BMP)',                           specimen: 'Serum (SST — Gold Top)',               analytes: ['Glucose','BUN','Creatinine','eGFR','Na⁺','K⁺','Cl⁻','CO₂'] },
-  { group: 'Chemistry',         name: 'Lipid Profile (Fasting)',                               specimen: 'Serum (SST — Gold Top)',               analytes: ['Total Cholesterol','LDL-C','HDL-C','Triglycerides','Non-HDL-C','LDL/HDL Ratio'] },
-  { group: 'Chemistry',         name: 'Liver Function Tests (LFTs)',                           specimen: 'Serum (SST — Gold Top)',               analytes: ['Total Bilirubin','Direct Bilirubin','Indirect Bilirubin','ALT','AST','ALP','GGT','Total Protein','Albumin'] },
-  { group: 'Chemistry',         name: 'Renal Function Panel',                                  specimen: 'Serum (SST — Gold Top)',               analytes: ['Creatinine','BUN','BUN/Creatinine Ratio','eGFR','Uric Acid','Cystatin C'] },
-  { group: 'Endocrinology',     name: 'Thyroid Function Panel (TSH / fT4 / fT3)',              specimen: 'Serum (SST — Gold Top)',               analytes: ['TSH','Free T4 (fT4)','Free T3 (fT3)','Total T4','Anti-TPO'] },
-  { group: 'Endocrinology',     name: 'HbA1c (Glycated Haemoglobin)',                         specimen: 'Venous Blood (EDTA — Purple Top)',     analytes: ['HbA1c %','Mean Blood Glucose Estimate'] },
-  { group: 'Endocrinology',     name: 'Fasting Blood Glucose',                                specimen: 'Serum (NaF — Grey Top)',               analytes: ['Fasting Glucose (mg/dL)'] },
-  { group: 'Cardiac Markers',   name: 'Troponin I / T (High-Sensitivity)',                    specimen: 'Serum (SST — Gold Top)',               analytes: ['hs-Troponin I','hs-Troponin T','CK-MB'] },
-  { group: 'Cardiac Markers',   name: 'BNP / NT-proBNP (Heart Failure Panel)',                specimen: 'EDTA Plasma (Purple Top)',             analytes: ['NT-proBNP','BNP'] },
-  { group: 'Inflammatory',      name: 'C-Reactive Protein (CRP) + ESR',                       specimen: 'Serum (SST — Gold Top)',               analytes: ['CRP (mg/L)','ESR (mm/hr)','Ferritin'] },
-  { group: 'Inflammatory',      name: 'Procalcitonin (PCT) — Sepsis Marker',                  specimen: 'Serum (SST — Gold Top)',               analytes: ['Procalcitonin (ng/mL)'] },
-  { group: 'Microbiology',      name: 'Blood Culture (Aerobic + Anaerobic)',                   specimen: 'Blood — Sterile BD BACTEC Bottles',    analytes: ['Organism (if +ve)','Sensitivity Pattern','Resistance Flags'] },
-  { group: 'Microbiology',      name: 'Urine Culture + Sensitivity (C&S)',                    specimen: 'Mid-Stream Urine (MSU) — Sterile',    analytes: ['Colony Count','Organism','Antibiogram'] },
-  { group: 'Urinalysis',        name: 'Urinalysis + Microscopy (UA+M)',                       specimen: 'Mid-Stream Urine (MSU)',               analytes: ['Colour','Clarity','pH','Specific Gravity','Protein','Glucose','Ketones','Blood','Nitrites','Leucocyte Esterase','WBC/hpf','RBC/hpf','Casts'] },
-  { group: 'Immunology',        name: 'HIV 1/2 Antigen-Antibody Combo (4th Gen)',             specimen: 'Serum (SST — Gold Top)',               analytes: ['HIV Ag/Ab Result','p24 Antigen','Confirmatory WB (if reactive)'] },
-  { group: 'Immunology',        name: 'Hepatitis B Surface Antigen (HBsAg)',                  specimen: 'Serum (SST — Gold Top)',               analytes: ['HBsAg','Anti-HBs','Anti-HBc (IgM)'] },
-  { group: 'Toxicology',        name: 'Drug Screen (Urine — 10-Panel)',                       specimen: 'Urine — Tamper-Evident Container',     analytes: ['Opiates','Cocaine','Cannabis','Amphetamines','Benzodiazepines','Barbiturates','Methadone','PCP','Propoxyphene','Methamphetamine'] },
+  { group: 'Haematology', name: 'Complete Blood Count (CBC) with Differential', specimen: 'Venous Blood (EDTA — Purple Top)', analytes: ['WBC', 'RBC', 'Hgb', 'Hct', 'MCV', 'MCH', 'MCHC', 'RDW', 'Platelets', 'Neutrophils %', 'Lymphocytes %', 'Monocytes %', 'Eosinophils %', 'Basophils %'] },
+  { group: 'Haematology', name: 'Prothrombin Time / INR (PT/INR)', specimen: 'Citrated Plasma (Blue Top)', analytes: ['PT (sec)', 'INR', 'APTT (sec)'] },
+  { group: 'Chemistry', name: 'Comprehensive Metabolic Panel (CMP)', specimen: 'Serum (SST — Gold Top)', analytes: ['Glucose', 'BUN', 'Creatinine', 'eGFR', 'Na⁺', 'K⁺', 'Cl⁻', 'CO₂', 'Ca²⁺', 'Total Protein', 'Albumin', 'Total Bilirubin', 'ALT', 'AST', 'ALP'] },
+  { group: 'Chemistry', name: 'Basic Metabolic Panel (BMP)', specimen: 'Serum (SST — Gold Top)', analytes: ['Glucose', 'BUN', 'Creatinine', 'eGFR', 'Na⁺', 'K⁺', 'Cl⁻', 'CO₂'] },
+  { group: 'Chemistry', name: 'Lipid Profile (Fasting)', specimen: 'Serum (SST — Gold Top)', analytes: ['Total Cholesterol', 'LDL-C', 'HDL-C', 'Triglycerides', 'Non-HDL-C', 'LDL/HDL Ratio'] },
+  { group: 'Chemistry', name: 'Liver Function Tests (LFTs)', specimen: 'Serum (SST — Gold Top)', analytes: ['Total Bilirubin', 'Direct Bilirubin', 'Indirect Bilirubin', 'ALT', 'AST', 'ALP', 'GGT', 'Total Protein', 'Albumin'] },
+  { group: 'Chemistry', name: 'Renal Function Panel', specimen: 'Serum (SST — Gold Top)', analytes: ['Creatinine', 'BUN', 'BUN/Creatinine Ratio', 'eGFR', 'Uric Acid', 'Cystatin C'] },
+  { group: 'Endocrinology', name: 'Thyroid Function Panel (TSH / fT4 / fT3)', specimen: 'Serum (SST — Gold Top)', analytes: ['TSH', 'Free T4 (fT4)', 'Free T3 (fT3)', 'Total T4', 'Anti-TPO'] },
+  { group: 'Endocrinology', name: 'HbA1c (Glycated Haemoglobin)', specimen: 'Venous Blood (EDTA — Purple Top)', analytes: ['HbA1c %', 'Mean Blood Glucose Estimate'] },
+  { group: 'Endocrinology', name: 'Fasting Blood Glucose', specimen: 'Serum (NaF — Grey Top)', analytes: ['Fasting Glucose (mg/dL)'] },
+  { group: 'Cardiac Markers', name: 'Troponin I / T (High-Sensitivity)', specimen: 'Serum (SST — Gold Top)', analytes: ['hs-Troponin I', 'hs-Troponin T', 'CK-MB'] },
+  { group: 'Cardiac Markers', name: 'BNP / NT-proBNP (Heart Failure Panel)', specimen: 'EDTA Plasma (Purple Top)', analytes: ['NT-proBNP', 'BNP'] },
+  { group: 'Inflammatory', name: 'C-Reactive Protein (CRP) + ESR', specimen: 'Serum (SST — Gold Top)', analytes: ['CRP (mg/L)', 'ESR (mm/hr)', 'Ferritin'] },
+  { group: 'Inflammatory', name: 'Procalcitonin (PCT) — Sepsis Marker', specimen: 'Serum (SST — Gold Top)', analytes: ['Procalcitonin (ng/mL)'] },
+  { group: 'Microbiology', name: 'Blood Culture (Aerobic + Anaerobic)', specimen: 'Blood — Sterile BD BACTEC Bottles', analytes: ['Organism (if +ve)', 'Sensitivity Pattern', 'Resistance Flags'] },
+  { group: 'Microbiology', name: 'Urine Culture + Sensitivity (C&S)', specimen: 'Mid-Stream Urine (MSU) — Sterile', analytes: ['Colony Count', 'Organism', 'Antibiogram'] },
+  { group: 'Urinalysis', name: 'Urinalysis + Microscopy (UA+M)', specimen: 'Mid-Stream Urine (MSU)', analytes: ['Colour', 'Clarity', 'pH', 'Specific Gravity', 'Protein', 'Glucose', 'Ketones', 'Blood', 'Nitrites', 'Leucocyte Esterase', 'WBC/hpf', 'RBC/hpf', 'Casts'] },
+  { group: 'Immunology', name: 'HIV 1/2 Antigen-Antibody Combo (4th Gen)', specimen: 'Serum (SST — Gold Top)', analytes: ['HIV Ag/Ab Result', 'p24 Antigen', 'Confirmatory WB (if reactive)'] },
+  { group: 'Immunology', name: 'Hepatitis B Surface Antigen (HBsAg)', specimen: 'Serum (SST — Gold Top)', analytes: ['HBsAg', 'Anti-HBs', 'Anti-HBc (IgM)'] },
+  { group: 'Toxicology', name: 'Drug Screen (Urine — 10-Panel)', specimen: 'Urine — Tamper-Evident Container', analytes: ['Opiates', 'Cocaine', 'Cannabis', 'Amphetamines', 'Benzodiazepines', 'Barbiturates', 'Methadone', 'PCP', 'Propoxyphene', 'Methamphetamine'] },
 ];
 
 const STATUS_META: Record<LabStatus, { label: string; color: string; bg: string; next?: LabStatus }> = {
-  ORDERED:          { label: 'Ordered',          color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', next: 'SAMPLE_COLLECTED' },
-  SAMPLE_COLLECTED: { label: 'Collected',         color: '#38bdf8', bg: 'rgba(56,189,248,0.12)',  next: 'PROCESSING' },
-  PROCESSING:       { label: 'Processing',        color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  next: 'COMPLETED' },
-  COMPLETED:        { label: 'Completed',         color: '#10b981', bg: 'rgba(16,185,129,0.12)',  next: undefined },
-  CANCELLED:        { label: 'Cancelled',         color: '#ef4444', bg: 'rgba(239,68,68,0.12)',   next: undefined },
+  ORDERED: { label: 'Ordered', color: '#94a3b8', bg: 'rgba(148,163,184,0.12)', next: 'SAMPLE_COLLECTED' },
+  SAMPLE_COLLECTED: { label: 'Collected', color: '#38bdf8', bg: 'rgba(56,189,248,0.12)', next: 'PROCESSING' },
+  PROCESSING: { label: 'Processing', color: '#f59e0b', bg: 'rgba(245,158,11,0.12)', next: 'COMPLETED' },
+  COMPLETED: { label: 'Completed', color: '#10b981', bg: 'rgba(16,185,129,0.12)', next: undefined },
+  CANCELLED: { label: 'Cancelled', color: '#ef4444', bg: 'rgba(239,68,68,0.12)', next: undefined },
 };
 
 function tatMinutes(createdAt: string): number {
@@ -114,7 +114,7 @@ function tatMinutes(createdAt: string): number {
 function tatColor(minutes: number, status: LabStatus): string {
   if (status === 'COMPLETED' || status === 'CANCELLED') return '#10b981';
   if (minutes > 120) return '#ef4444';
-  if (minutes > 60)  return '#f59e0b';
+  if (minutes > 60) return '#f59e0b';
   return '#94a3b8';
 }
 
@@ -130,38 +130,38 @@ function buildDefaultAnalytes(testName: string): Analyte[] {
 export default function LabStationWorkbench() {
   const { user, getAuthHeaders } = useAuth();
 
-  const [orders, setOrders]             = useState<LabOrder[]>([]);
-  const [stats, setStats]               = useState<any>(null);
-  const [patients, setPatients]         = useState<any[]>([]);
-  const [loading, setLoading]           = useState(true);
-  const [refreshing, setRefreshing]     = useState(false);
-  const [searchTerm, setSearchTerm]     = useState('');
+  const [orders, setOrders] = useState<LabOrder[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [patients, setPatients] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<LabStatus | 'ALL'>('ALL');
   const [priorityFilter, setPriorityFilter] = useState<Priority | 'ALL'>('ALL');
-  const [expandedId, setExpandedId]     = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Modals
-  const [showOrderModal, setShowOrderModal]   = useState(false);
+  const [showOrderModal, setShowOrderModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
-  const [viewOrder, setViewOrder]             = useState<LabOrder | null>(null);
-  const [selectedOrder, setSelectedOrder]     = useState<LabOrder | null>(null);
+  const [viewOrder, setViewOrder] = useState<LabOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<LabOrder | null>(null);
 
   // Feedback
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
-  const [actionError, setActionError]     = useState<string | null>(null);
-  const [submitting, setSubmitting]       = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
   // New order form
-  const [newPatientId, setNewPatientId]   = useState('');
-  const [newTestName, setNewTestName]     = useState(PANEL_CATALOGUE[0].name);
-  const [newSpecimen, setNewSpecimen]     = useState(PANEL_CATALOGUE[0].specimen);
-  const [newPriority, setNewPriority]     = useState<Priority>('ROUTINE');
+  const [newPatientId, setNewPatientId] = useState('');
+  const [newTestName, setNewTestName] = useState(PANEL_CATALOGUE[0].name);
+  const [newSpecimen, setNewSpecimen] = useState(PANEL_CATALOGUE[0].specimen);
+  const [newPriority, setNewPriority] = useState<Priority>('ROUTINE');
 
   // Result entry — per-analyte rows
-  const [analytes, setAnalytes]           = useState<Analyte[]>([]);
+  const [analytes, setAnalytes] = useState<Analyte[]>([]);
   const [resultIsCritical, setResultIsCritical] = useState(false);
   const [resultCriticalNotes, setResultCriticalNotes] = useState('');
-  const [qcPassed, setQcPassed]           = useState(true);
+  const [qcPassed, setQcPassed] = useState(true);
 
   // ── Data fetch ──────────────────────────────────────────────────────────────
 
@@ -171,10 +171,10 @@ export default function LabStationWorkbench() {
       const h = getAuthHeaders();
       const [ordRes, statRes, ptsRes] = await Promise.all([
         fetch(`${API_BASE}/stations/lab/orders`, { headers: h }),
-        fetch(`${API_BASE}/stations/lab/stats`,  { headers: h }),
+        fetch(`${API_BASE}/stations/lab/stats`, { headers: h }),
         fetch(`${API_BASE}/consultations/patients`, { headers: h }),
       ]);
-      if (ordRes.ok)  setOrders(await ordRes.json());
+      if (ordRes.ok) setOrders(await ordRes.json());
       if (statRes.ok) setStats(await statRes.json());
       if (ptsRes.ok) {
         const pts = await ptsRes.json();
@@ -225,10 +225,10 @@ export default function LabStationWorkbench() {
         method: 'POST',
         headers: { ...getAuthHeaders(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          patientId:    newPatientId,
-          testName:     newTestName,
+          patientId: newPatientId,
+          testName: newTestName,
           specimenType: newSpecimen,
-          priority:     newPriority,
+          priority: newPriority,
         }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
@@ -278,9 +278,9 @@ export default function LabStationWorkbench() {
         body: JSON.stringify({
           findings,
           referenceRange: refRange,
-          isCritical:     resultIsCritical || anyAnalyteCritical,
-          criticalNotes:  resultCriticalNotes || undefined,
-          status:         'COMPLETED',
+          isCritical: resultIsCritical || anyAnalyteCritical,
+          criticalNotes: resultCriticalNotes || undefined,
+          status: 'COMPLETED',
         }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to save result'); }
@@ -307,7 +307,7 @@ export default function LabStationWorkbench() {
   });
 
   const criticalCount = orders.filter(o => o.isCritical && o.status !== 'COMPLETED').length;
-  const pendingCount  = orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
+  const pendingCount = orders.filter(o => o.status !== 'COMPLETED' && o.status !== 'CANCELLED').length;
 
   // ─────────────────────────────────────────────────────────────────────────────
   // Render
@@ -369,10 +369,10 @@ export default function LabStationWorkbench() {
       {/* ── Stats cards ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: 'Pending Orders',    value: pendingCount,                                                    icon: TestTube,  color: 'text-blue-400',    bg: 'bg-blue-500/10'    },
-          { label: 'Critical / Panic',  value: criticalCount,                                                   icon: Siren,     color: 'text-red-400',     bg: 'bg-red-500/10',   border: criticalCount ? 'border-red-500/40' : '' },
-          { label: 'Completed Today',   value: orders.filter(o => o.status === 'COMPLETED').length,            icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
-          { label: 'Avg TAT (min)',      value: orders.length ? Math.round(orders.reduce((s,o) => s + tatMinutes(o.createdAt), 0) / orders.length) : 0, icon: BarChart3, color: 'text-amber-400', bg: 'bg-amber-500/10' },
+          { label: 'Pending Orders', value: pendingCount, icon: TestTube, color: 'text-blue-400', bg: 'bg-blue-500/10' },
+          { label: 'Critical / Panic', value: criticalCount, icon: Siren, color: 'text-red-400', bg: 'bg-red-500/10', border: criticalCount ? 'border-red-500/40' : '' },
+          { label: 'Completed Today', value: orders.filter(o => o.status === 'COMPLETED').length, icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-500/10' },
+          { label: 'Avg TAT (min)', value: orders.length ? Math.round(orders.reduce((s, o) => s + tatMinutes(o.createdAt), 0) / orders.length) : 0, icon: BarChart3, color: 'text-amber-400', bg: 'bg-amber-500/10' },
         ].map(card => (
           <div key={card.label} className={`p-4 rounded-2xl bg-slate-900/80 border ${card.border ?? 'border-slate-800'} flex items-center space-x-4`}>
             <div className={`p-2.5 rounded-xl ${card.bg} border border-current/20`}>
@@ -400,7 +400,7 @@ export default function LabStationWorkbench() {
         </div>
 
         <div className="flex items-center space-x-1 text-xs">
-          {(['ALL','ORDERED','SAMPLE_COLLECTED','PROCESSING','COMPLETED','CANCELLED'] as const).map(s => (
+          {(['ALL', 'ORDERED', 'SAMPLE_COLLECTED', 'PROCESSING', 'COMPLETED', 'CANCELLED'] as const).map(s => (
             <button
               key={s}
               onClick={() => setStatusFilter(s)}
@@ -412,15 +412,14 @@ export default function LabStationWorkbench() {
         </div>
 
         <div className="flex items-center space-x-1 text-xs">
-          {(['ALL','STAT','ROUTINE'] as const).map(p => (
+          {(['ALL', 'STAT', 'ROUTINE'] as const).map(p => (
             <button
               key={p}
               onClick={() => setPriorityFilter(p)}
-              className={`px-3 py-1.5 rounded-lg font-semibold transition ${
-                priorityFilter === p
-                  ? p === 'STAT' ? 'bg-red-600 text-white' : p === 'ROUTINE' ? 'bg-slate-600 text-white' : 'bg-violet-600 text-white'
-                  : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
-              }`}
+              className={`px-3 py-1.5 rounded-lg font-semibold transition ${priorityFilter === p
+                ? p === 'STAT' ? 'bg-red-600 text-white' : p === 'ROUTINE' ? 'bg-slate-600 text-white' : 'bg-violet-600 text-white'
+                : 'bg-slate-800 text-slate-400 hover:bg-slate-700'
+                }`}
             >
               {p}
             </button>
@@ -442,19 +441,18 @@ export default function LabStationWorkbench() {
       ) : (
         <div className="space-y-3">
           {filtered.map(order => {
-            const sMeta  = STATUS_META[order.status];
-            const tat    = tatMinutes(order.createdAt);
-            const isExp  = expandedId === order.id;
-            const prio   = order.priority ?? 'ROUTINE';
+            const sMeta = STATUS_META[order.status];
+            const tat = tatMinutes(order.createdAt);
+            const isExp = expandedId === order.id;
+            const prio = order.priority ?? 'ROUTINE';
 
             return (
               <div
                 key={order.id}
-                className={`rounded-2xl border transition ${
-                  order.isCritical && order.status !== 'COMPLETED'
-                    ? 'border-red-500/40 bg-red-950/20'
-                    : 'border-slate-800 bg-slate-900/60'
-                }`}
+                className={`rounded-2xl border transition ${order.isCritical && order.status !== 'COMPLETED'
+                  ? 'border-red-500/40 bg-red-950/20'
+                  : 'border-slate-800 bg-slate-900/60'
+                  }`}
               >
                 {/* Row header */}
                 <div
@@ -493,7 +491,7 @@ export default function LabStationWorkbench() {
                     <p className="font-mono text-xs font-bold" style={{ color: tatColor(tat, order.status) }}>
                       {order.status === 'COMPLETED'
                         ? '✓ Done'
-                        : `${tat < 60 ? `${tat}m` : `${Math.floor(tat/60)}h ${tat%60}m`}`}
+                        : `${tat < 60 ? `${tat}m` : `${Math.floor(tat / 60)}h ${tat % 60}m`}`}
                     </p>
                   </div>
 
@@ -506,14 +504,14 @@ export default function LabStationWorkbench() {
                     {/* Metadata grid */}
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                       {[
-                        { label: 'Order #',     value: order.orderNumber },
-                        { label: 'Specimen',    value: order.specimenType },
-                        { label: 'Patient',     value: `${order.patient?.firstName} ${order.patient?.lastName}` },
-                        { label: 'Phone',       value: order.patient?.phone ?? '—' },
-                        { label: 'Ordered At',  value: new Date(order.createdAt).toLocaleString() },
-                        { label: 'Technician',  value: order.technician ? `${order.technician.firstName} ${order.technician.lastName}` : '—' },
-                        { label: 'Licence #',   value: order.technician?.medicalLicenseNo ?? '—' },
-                        { label: 'Completed At',value: order.completedAt ? new Date(order.completedAt).toLocaleString() : '—' },
+                        { label: 'Order #', value: order.orderNumber },
+                        { label: 'Specimen', value: order.specimenType },
+                        { label: 'Patient', value: `${order.patient?.firstName} ${order.patient?.lastName}` },
+                        { label: 'Phone', value: order.patient?.phone ?? '—' },
+                        { label: 'Ordered At', value: new Date(order.createdAt).toLocaleString() },
+                        { label: 'Technician', value: order.technician ? `${order.technician.firstName} ${order.technician.lastName}` : '—' },
+                        { label: 'Licence #', value: order.technician?.medicalLicenseNo ?? '—' },
+                        { label: 'Completed At', value: order.completedAt ? new Date(order.completedAt).toLocaleString() : '—' },
                       ].map(f => (
                         <div key={f.label} className="bg-slate-950/60 rounded-xl p-3">
                           <p className="text-[10px] text-slate-500 uppercase tracking-wider">{f.label}</p>
@@ -537,13 +535,12 @@ export default function LabStationWorkbench() {
 
                     {/* Chain-of-custody pipeline */}
                     <div className="flex items-center space-x-1 text-[10px] flex-wrap gap-y-2">
-                      {(['ORDERED','SAMPLE_COLLECTED','PROCESSING','COMPLETED'] as LabStatus[]).map((s, i, arr) => (
+                      {(['ORDERED', 'SAMPLE_COLLECTED', 'PROCESSING', 'COMPLETED'] as LabStatus[]).map((s, i, arr) => (
                         <React.Fragment key={s}>
-                          <span className={`px-2.5 py-1 rounded-full font-bold ${
-                            order.status === s
-                              ? 'text-white'
-                              : (arr.indexOf(order.status) > i ? 'text-emerald-400 bg-emerald-900/30' : 'text-slate-600 bg-slate-800/60')
-                          }`}
+                          <span className={`px-2.5 py-1 rounded-full font-bold ${order.status === s
+                            ? 'text-white'
+                            : (arr.indexOf(order.status) > i ? 'text-emerald-400 bg-emerald-900/30' : 'text-slate-600 bg-slate-800/60')
+                            }`}
                             style={order.status === s ? { backgroundColor: STATUS_META[s].bg, color: STATUS_META[s].color } : {}}
                           >
                             {STATUS_META[s].label}
@@ -610,19 +607,18 @@ export default function LabStationWorkbench() {
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Order Priority *</label>
                 <div className="flex space-x-2">
-                  {(['ROUTINE','STAT'] as Priority[]).map(p => (
+                  {(['ROUTINE', 'STAT'] as Priority[]).map(p => (
                     <button
                       key={p} type="button"
                       onClick={() => setNewPriority(p)}
-                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${
-                        newPriority === p
-                          ? p === 'STAT'
-                            ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-700/30'
-                            : 'bg-violet-600 border-violet-500 text-white'
-                          : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'
-                      }`}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-bold border transition ${newPriority === p
+                        ? p === 'STAT'
+                          ? 'bg-red-600 border-red-500 text-white shadow-lg shadow-red-700/30'
+                          : 'bg-violet-600 border-violet-500 text-white'
+                        : 'bg-slate-900 border-slate-700 text-slate-400 hover:border-slate-600'
+                        }`}
                     >
-                      {p === 'STAT' ? '🚨 STAT (Urgent)' : 'ROUTINE'}
+                      {p === 'STAT' ? 'STAT (Urgent)' : 'ROUTINE'}
                     </button>
                   ))}
                 </div>
@@ -656,7 +652,7 @@ export default function LabStationWorkbench() {
               {/* Panel catalogue */}
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">Diagnostic Panel *</label>
-                {(['Haematology','Chemistry','Endocrinology','Cardiac Markers','Inflammatory','Microbiology','Urinalysis','Immunology','Toxicology'] as const).map(group => (
+                {(['Haematology', 'Chemistry', 'Endocrinology', 'Cardiac Markers', 'Inflammatory', 'Microbiology', 'Urinalysis', 'Immunology', 'Toxicology'] as const).map(group => (
                   <optgroup key={group} label={group} />
                 ))}
                 <select
@@ -668,7 +664,7 @@ export default function LabStationWorkbench() {
                   }}
                   className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-white text-xs focus:outline-none focus:border-violet-500"
                 >
-                  {['Haematology','Chemistry','Endocrinology','Cardiac Markers','Inflammatory','Microbiology','Urinalysis','Immunology','Toxicology'].map(group => (
+                  {['Haematology', 'Chemistry', 'Endocrinology', 'Cardiac Markers', 'Inflammatory', 'Microbiology', 'Urinalysis', 'Immunology', 'Toxicology'].map(group => (
                     <optgroup key={group} label={`── ${group} ──`}>
                       {PANEL_CATALOGUE.filter(p => p.group === group).map(p => (
                         <option key={p.name} value={p.name}>{p.name}</option>
@@ -743,7 +739,7 @@ export default function LabStationWorkbench() {
                   <table className="w-full text-xs">
                     <thead className="bg-slate-950">
                       <tr>
-                        {['Analyte','Result','Unit','Ref Low','Ref High','Flag'].map(h => (
+                        {['Analyte', 'Result', 'Unit', 'Ref Low', 'Ref High', 'Flag'].map(h => (
                           <th key={h} className="px-3 py-2.5 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider border-b border-slate-800">{h}</th>
                         ))}
                       </tr>
@@ -853,14 +849,14 @@ export default function LabStationWorkbench() {
               {/* Case info */}
               <div className="grid grid-cols-2 gap-3 text-xs">
                 {[
-                  { label: 'Patient Name',      value: `${viewOrder.patient?.firstName} ${viewOrder.patient?.lastName}` },
-                  { label: 'Patient Email',     value: viewOrder.patient?.email },
-                  { label: 'Diagnostic Panel',  value: viewOrder.testName },
-                  { label: 'Specimen Type',     value: viewOrder.specimenType },
-                  { label: 'Order Received',    value: new Date(viewOrder.createdAt).toLocaleString() },
-                  { label: 'Report Issued',     value: viewOrder.completedAt ? new Date(viewOrder.completedAt).toLocaleString() : '—' },
+                  { label: 'Patient Name', value: `${viewOrder.patient?.firstName} ${viewOrder.patient?.lastName}` },
+                  { label: 'Patient Email', value: viewOrder.patient?.email },
+                  { label: 'Diagnostic Panel', value: viewOrder.testName },
+                  { label: 'Specimen Type', value: viewOrder.specimenType },
+                  { label: 'Order Received', value: new Date(viewOrder.createdAt).toLocaleString() },
+                  { label: 'Report Issued', value: viewOrder.completedAt ? new Date(viewOrder.completedAt).toLocaleString() : '—' },
                   { label: 'Reporting Scientist', value: viewOrder.technician ? `${viewOrder.technician.firstName} ${viewOrder.technician.lastName}` : '—' },
-                  { label: 'Licence #',         value: viewOrder.technician?.medicalLicenseNo ?? '—' },
+                  { label: 'Licence #', value: viewOrder.technician?.medicalLicenseNo ?? '—' },
                 ].map(f => (
                   <div key={f.label} className="bg-slate-950/60 rounded-xl p-3">
                     <p className="text-[10px] text-slate-500 uppercase tracking-wider">{f.label}</p>
