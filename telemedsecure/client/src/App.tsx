@@ -1,8 +1,9 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
+import InfinityTrail from './components/InfinityTrail';
 
 /*
  * Every role dashboard mounts into the shared `dashboard-shell`, which already
@@ -100,9 +101,21 @@ function WaitingRoom() {
 }
 
 function App() {
+  // Show the infinity trail splash once per browser session
+  const [showSplash, setShowSplash] = useState<boolean>(() => {
+    if (sessionStorage.getItem('telemed_splashed')) return false;
+    sessionStorage.setItem('telemed_splashed', '1');
+    return true;
+  });
+
+  const handleSplashDone = useCallback(() => setShowSplash(false), []);
+
   return (
     <BrowserRouter>
       <AuthProvider>
+        {/* Infinity trail — renders on top of everything, removes itself when done */}
+        {showSplash && <InfinityTrail onDone={handleSplashDone} />}
+
         <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col">
           <GlobalNavbar />
           <main className="flex-1">
