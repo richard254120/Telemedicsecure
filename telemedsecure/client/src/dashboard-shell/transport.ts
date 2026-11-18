@@ -1,13 +1,15 @@
 /**
  * Role-agnostic HTTP transport shared by every dashboard.
  *
- * Two rules the naive `fetch(...).then(r => r.ok ? r.json() : [])` calls broke,
- * and that this module enforces everywhere (not just the admin console):
+ * Rules this module enforces everywhere:
  *
  *  1. A non-2xx response is an *error*, never a silent empty array. An
  *     unreachable endpoint must not be renderable as "0 records".
- *  2. A 401/403 broadcasts `telemed:auth-expired` so the session can be
- *     terminated instead of leaving a stale operator on a blank HUD.
+ *  2. A 401 triggers one silent token-refresh attempt before the request is
+ *     retried. Only if the refresh itself fails does the transport broadcast
+ *     `telemed:auth-expired` to gate the UI.
+ *  3. A 403 (forbidden, not expired) is surfaced immediately as an error
+ *     without a refresh attempt, since re-authing won't change permissions.
  */
 import { API_BASE } from '../config';
 
@@ -31,6 +33,21 @@ export class ApiError extends Error {
 }
 
 export type HeadersFactory = () => Record<string, string>;
+
+/**
+ * Optional hook the transport can call to silently refresh the access token.
+ * Set by AuthProvider on mount so transport can reach the refresh logic without
+ * creating a circular module dependency.
+ */
+let _silentRefresh: (() => Promise<boolean>) | null = null;
+
+export function registerSilentRefresh(fn: () => Promise<boolean>) {
+  _silentRefresh = fn;
+}
+
+export function clearSilentRefresh() {
+  _silentRefresh = null;
+}
 
 /**
  * True for the rejection an AbortController produces. `fetch` rejects with a
@@ -58,8 +75,22 @@ async function parseError(res: Response, fallback: string): Promise<ApiError> {
   } catch {
     detail = null;
   }
-  if (res.status === 401 || res.status === 403) broadcastAuthExpired();
   return new ApiError(res.status, detail || `${fallback} (HTTP ${res.status})`, detail);
+}
+
+async function rawFetch(
+  getAuthHeaders: HeadersFactory,
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  return fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      Accept: 'application/json',
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...getAuthHeaders(),
+    },
+  });
 }
 
 export async function request<T>(
@@ -70,17 +101,37 @@ export async function request<T>(
 ): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, {
-      ...init,
-      headers: {
-        Accept: 'application/json',
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
-        ...getAuthHeaders(),
-      },
-    });
+    res = await rawFetch(getAuthHeaders, path, init);
   } catch (err) {
     if (isAbortError(err)) throw err;
     throw new ApiError(0, `${fallbackMessage}: network unreachable`);
+  }
+
+  // ── 401 handling: attempt a silent refresh, then retry once ──────────────
+  if (res.status === 401 && _silentRefresh) {
+    const refreshed = await _silentRefresh();
+    if (refreshed) {
+      // Retry with the freshly rotated access token
+      try {
+        res = await rawFetch(getAuthHeaders, path, init);
+      } catch (err) {
+        if (isAbortError(err)) throw err;
+        throw new ApiError(0, `${fallbackMessage}: network unreachable`);
+      }
+      if (!res.ok) {
+        // Refresh worked but the endpoint still rejects — real auth failure
+        broadcastAuthExpired();
+        throw await parseError(res, fallbackMessage);
+      }
+    } else {
+      // Refresh failed — session is gone
+      broadcastAuthExpired();
+      throw await parseError(res, fallbackMessage);
+    }
+  } else if (res.status === 401) {
+    // No refresh hook registered (e.g. not logged in at all)
+    broadcastAuthExpired();
+    throw await parseError(res, fallbackMessage);
   }
 
   if (!res.ok) throw await parseError(res, fallbackMessage);

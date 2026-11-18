@@ -17,7 +17,7 @@ const prisma = new PrismaClient();
 type TokenSubject = { id: string; role: string; mustChangePassword: boolean };
 
 const generateTokens = (user: TokenSubject) => {
-  const accessToken = jwt.sign({ id: user.id, role: user.role, mustChangePassword: user.mustChangePassword }, process.env.JWT_SECRET || 'secret', { expiresIn: '15m' });
+  const accessToken = jwt.sign({ id: user.id, role: user.role, mustChangePassword: user.mustChangePassword }, process.env.JWT_SECRET || 'secret', { expiresIn: '2h' });
   const refreshToken = jwt.sign({ id: user.id }, process.env.JWT_REFRESH_SECRET || 'rsecret', { expiresIn: '7d' });
   return { accessToken, refreshToken };
 };
