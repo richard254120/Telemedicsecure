@@ -141,6 +141,41 @@ router.put('/lab/orders/:id/result', requireRole([Role.LAB_TECHNICIAN, Role.ADMI
 });
 
 /**
+ * PATCH /api/v1/stations/lab/orders/:id/status
+ * Advance the pipeline status of a lab order
+ */
+router.patch('/lab/orders/:id/status', requireRole([Role.LAB_TECHNICIAN, Role.ADMIN]), async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { status } = req.body;
+    const valid: string[] = ['SAMPLE_COLLECTED', 'PROCESSING', 'COMPLETED', 'CANCELLED'];
+    if (!status || !valid.includes(status)) {
+      return res.status(400).json({ error: `Invalid status. Must be one of: ${valid.join(', ')}` });
+    }
+    const updated = await prisma.labOrder.update({
+      where: { id: String(req.params.id) },
+      data: {
+        status: status as LabOrderStatus,
+        ...(status === 'COMPLETED' ? { completedAt: new Date() } : {})
+      },
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, email: true } }
+      }
+    });
+    await createChainedAuditEvent({
+      action: 'LAB_ORDER_STATUS_ADVANCED',
+      resource: `/api/v1/stations/lab/orders/${req.params.id}`,
+      userId: user.id,
+      ipAddress: req.ip ?? 'unknown',
+      details: { newStatus: status, orderId: req.params.id }
+    });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update order status', details: err.message });
+  }
+});
+
+/**
  * GET /api/v1/stations/lab/stats
  */
 router.get('/lab/stats', async (req: Request, res: Response) => {
