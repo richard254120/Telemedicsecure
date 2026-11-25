@@ -78,8 +78,32 @@ export default function NurseDashboard() {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await apiGet<any>(getAuthHeaders, '/consultations', 'Failed to load consultations');
-      setConsultations(Array.isArray(data) ? data : []);
+      const [consData, ptsData] = await Promise.all([
+        apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
+        apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients').catch(() => [])
+      ]);
+
+      const consList = Array.isArray(consData) ? consData : [];
+      setConsultations(consList);
+
+      const ptsList = Array.isArray(ptsData) ? ptsData : [];
+      // Combine direct patient directory with patients found in consultations
+      const patientMap = new Map<string, any>();
+      ptsList.forEach((p: any) => {
+        if (p?.id) patientMap.set(p.id, p);
+      });
+      consList.forEach((c: any) => {
+        if (c?.patient && c.patient.id && !patientMap.has(c.patient.id)) {
+          patientMap.set(c.patient.id, {
+            id: c.patient.id,
+            firstName: c.patient.firstName || 'Patient',
+            lastName: c.patient.lastName || `#${c.patient.id.substring(0, 6)}`,
+            email: c.patient.email || '',
+            createdAt: c.scheduledAt || new Date().toISOString()
+          });
+        }
+      });
+      setPatients(Array.from(patientMap.values()));
     } catch (e) {
       console.error(e);
       setLoadError(errorMessage(e, 'Unable to load your patient list'));
@@ -346,12 +370,20 @@ export default function NurseDashboard() {
                     onChange={e => setSelectedConsultationId(e.target.value)}
                     className="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-emerald-500"
                   >
-                    <option value="">Select a consultation...</option>
-                    {consultations.map(c => (
-                      <option key={c.id} value={c.id}>
-                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId} (ID: {c.id.substring(0, 8)})
-                      </option>
-                    ))}
+                    <option value="">Select a patient / consultation...</option>
+                    {consultations.length > 0 ? (
+                      consultations.map(c => (
+                        <option key={c.id} value={c.id}>
+                          {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : (c.patientId ? `Patient #${c.patientId.substring(0, 8)}` : 'Patient')} • {new Date(c.scheduledAt).toLocaleDateString()} (Encounter: #{c.id.substring(0, 8)})
+                        </option>
+                      ))
+                    ) : (
+                      patients.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.firstName} {p.lastName} • {p.email} (MRN: #{p.id.substring(0, 8)})
+                        </option>
+                      ))
+                    )}
                   </select>
                 </div>
 
@@ -584,11 +616,48 @@ export default function NurseDashboard() {
             )}
 
             <div className="grid gap-4">
-              {consultations.length === 0 ? (
+              {consultations.length === 0 && patients.length === 0 ? (
                 <div className="bg-slate-800/60 border border-slate-700/60 rounded-3xl p-8 text-center space-y-3">
                   <Users className="w-12 h-12 text-slate-500 mx-auto" />
                   <p className="text-sm text-slate-400">No assigned patients found.</p>
                 </div>
+              ) : consultations.length === 0 ? (
+                patients.map(p => (
+                  <div
+                    key={p.id}
+                    className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
+                  >
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-emerald-500/15 text-emerald-300">
+                          REGISTERED PATIENT
+                        </span>
+                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
+                          MRN: #{p.id.substring(0, 8)}
+                        </span>
+                      </div>
+                      <h3 className="text-base font-bold text-white">
+                        {p.firstName} {p.lastName}
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Email: {p.email} · Registered: {new Date(p.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      <button
+                        onClick={() => {
+                          setSelectedConsultationId(p.id);
+                          setActiveTab('vitals');
+                        }}
+                        className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                      >
+                        <Activity className="w-4 h-4" />
+                        <span>Record Vitals</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
               ) : (
                 consultations.map(c => {
                   const badge = handoffBadge(c.status);

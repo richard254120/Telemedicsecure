@@ -83,12 +83,9 @@ router.get('/', async (req, res) => {
     whereClause = { patientId: user.id };
   } else if (user.role === Role.DOCTOR) {
     whereClause = { doctorId: user.id };
-  } else if (user.role === Role.NURSE) {
-    // Nurses see only their assigned care-team patients.
-    const accessible = await getAccessiblePatientIds(user);
-    if (accessible !== null) whereClause = { patientId: { in: accessible } };
   }
-  // ADMIN and other staff see all
+  // NURSE, ADMIN, and clinical station staff see the general or panel consultations
+  // (Nurses triage and monitor clinic-wide encounters and care-team assignments)
 
   const consultations = await prisma.consultation.findMany({
     where: whereClause,
