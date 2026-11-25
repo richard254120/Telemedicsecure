@@ -92,15 +92,8 @@ app.use(cors({
 // Safe JSON body parser with size cap
 app.use(express.json({ limit: '10mb' }));
 
-// Rate Limiting (Brute-force and DoS protection)
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Limit each IP to 500 requests per windowMs
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Too many requests from this IP, please try again later.' }
-});
-app.use('/api', limiter);
+// Rate Limiting disabled per user request to prevent "Too many requests from this IP" during active testing/clinical workflows
+// (Previously blocked multi-polling command center and dashboard auto-sync requests)
 
 // Root Welcome & Status Portal
 app.get('/', (req, res) => {
