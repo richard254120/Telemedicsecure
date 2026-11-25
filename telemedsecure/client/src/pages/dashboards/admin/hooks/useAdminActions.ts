@@ -122,6 +122,17 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
     [getAuthHeaders, run],
   );
 
+  const resetPassword = useCallback(
+    (userId: string, displayName: string, input?: api.ResetPasswordInput) =>
+      run(
+        `password:${userId}`,
+        () => api.resetUserPassword(getAuthHeaders, userId, input),
+        res => `Password issued for ${res.user.name}.`,
+        ['users'],
+      ),
+    [getAuthHeaders, run],
+  );
+
   const provisionStaff = useCallback(
     (input: api.ProvisionInput) =>
       run(
@@ -300,6 +311,7 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
       updateRole,
       setActive,
       resetTotp,
+      resetPassword,
       provisionStaff,
       createInvitation,
       revokeInvitation,
@@ -319,6 +331,7 @@ export function useAdminActions({ getAuthHeaders, notify, refresh }: AdminAction
       updateRole,
       setActive,
       resetTotp,
+      resetPassword,
       provisionStaff,
       createInvitation,
       revokeInvitation,

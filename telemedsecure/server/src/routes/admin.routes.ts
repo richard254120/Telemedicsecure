@@ -455,6 +455,58 @@ router.put('/users/:id/status', async (req, res) => {
   res.json({ message: 'Status updated', isActive: user.isActive });
 });
 
+// 6b. Admin resets user password and issues new credential (or temporary password)
+router.post('/users/:id/reset-password', async (req, res) => {
+  try {
+    const adminUser = (req as any).user;
+    const targetId = req.params.id;
+    const { password, requirePasswordChange = true } = req.body;
+
+    const existingUser = await prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, email: true, firstName: true, lastName: true, role: true }
+    });
+
+    if (!existingUser) {
+      return res.status(404).json({ error: 'User account not found' });
+    }
+
+    // Use admin-supplied password if valid (>= 8 chars), otherwise generate strong temporary password
+    const issuedPassword = (password && typeof password === 'string' && password.trim().length >= 8)
+      ? password.trim()
+      : `Tmp#${crypto.randomBytes(4).toString('hex')}!${Math.floor(100 + Math.random() * 900)}`;
+
+    const passwordHash = await argon2.hash(issuedPassword);
+
+    await prisma.user.update({
+      where: { id: targetId },
+      data: {
+        passwordHash,
+        mustChangePassword: Boolean(requirePasswordChange),
+        failedAttempts: 0,
+        lockedUntil: null,
+      }
+    });
+
+    await logAudit('ADMIN_PASSWORD_RESET', `USER:${targetId}`, adminUser.id, req.ip);
+
+    res.json({
+      message: `Password successfully reset for ${existingUser.firstName} ${existingUser.lastName} (${existingUser.email}).`,
+      issuedPassword,
+      mustChangePassword: Boolean(requirePasswordChange),
+      user: {
+        id: existingUser.id,
+        email: existingUser.email,
+        name: `${existingUser.firstName} ${existingUser.lastName}`,
+        role: existingUser.role
+      }
+    });
+  } catch (err: any) {
+    console.error('Error resetting user password:', err);
+    res.status(500).json({ error: 'Failed to reset user password', details: err.message });
+  }
+});
+
 // 7. Re-issue a TOTP enrolment secret for a user.
 // Login verifies any stored secret, so this write takes effect immediately: the
 // target must enrol with the new secret before their next sign-in, which is why

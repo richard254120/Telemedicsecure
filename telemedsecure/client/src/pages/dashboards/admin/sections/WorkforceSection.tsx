@@ -19,6 +19,7 @@ import {
   ChevronDown,
   Download,
   KeyRound,
+  Lock,
   Search,
   Trash2,
   UserCheck,
@@ -94,6 +95,10 @@ const WorkforceSection: React.FC<WorkforceSectionProps> = ({
   const [selected, setSelected] = useState<string[]>([]);
   const [purgeTargets, setPurgeTargets] = useState<AdminUser[] | null>(null);
   const [totpResult, setTotpResult] = useState<{ name: string; secret: string } | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<AdminUser | null>(null);
+  const [customPassword, setCustomPassword] = useState('');
+  const [requireRotation, setRequireRotation] = useState(true);
+  const [issuedPasswordResult, setIssuedPasswordResult] = useState<{ name: string; email: string; password: string } | null>(null);
 
   const debouncedQuery = useDebouncedValue(query, 200);
   // Lockouts and invitation expiries are compared against one committed clock
@@ -194,6 +199,27 @@ const WorkforceSection: React.FC<WorkforceSectionProps> = ({
     // compiler's dependency inference treats them as values, and matching it
     // keeps this callback memoised instead of skipping the whole component.
     [actions, setTotpResult],
+  );
+
+  const confirmPasswordReset = useCallback(
+    async () => {
+      if (!passwordTarget) return;
+      const result = await actions.resetPassword(passwordTarget.id, fullName(passwordTarget), {
+        password: customPassword.trim() || undefined,
+        requirePasswordChange: requireRotation,
+      });
+      const data = result.data as { issuedPassword?: string } | undefined;
+      if (result.ok && data?.issuedPassword) {
+        setIssuedPasswordResult({
+          name: fullName(passwordTarget),
+          email: passwordTarget.email,
+          password: data.issuedPassword,
+        });
+        setPasswordTarget(null);
+        setCustomPassword('');
+      }
+    },
+    [actions, passwordTarget, customPassword, requireRotation],
   );
 
   const confirmPurge = useCallback(async () => {
@@ -435,6 +461,19 @@ const WorkforceSection: React.FC<WorkforceSectionProps> = ({
                               2FA
                             </Button>
                             <Button
+                              variant="ghost"
+                              icon={Lock}
+                              busy={pending === `password:${person.id}`}
+                              title="Reset and issue a new password for this user"
+                              onClick={() => {
+                                setPasswordTarget(person);
+                                setCustomPassword('');
+                                setRequireRotation(true);
+                              }}
+                            >
+                              Reset Pass
+                            </Button>
+                            <Button
                               variant="danger"
                               icon={Trash2}
                               disabled={isSelf}
@@ -579,6 +618,83 @@ const WorkforceSection: React.FC<WorkforceSectionProps> = ({
           <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           A re-issued secret counts as a fresh enrolment. The account is not two-factor protected until the holder
           completes verification in their own dashboard.
+        </div>
+      </Modal>
+
+      {/* Password Reset Prompt Modal */}
+      <Modal
+        open={!!passwordTarget}
+        onClose={() => setPasswordTarget(null)}
+        title={`Reset Password for ${passwordTarget ? fullName(passwordTarget) : ''}`}
+        description="Issue a new password directly for this user. Leave blank to automatically generate a secure temporary password."
+        icon={Lock}
+        tone="info"
+        footer={
+          <div className="flex justify-end gap-2">
+            <Button variant="ghost" onClick={() => setPasswordTarget(null)}>Cancel</Button>
+            <Button
+              variant="primary"
+              icon={Lock}
+              busy={pending === `password:${passwordTarget?.id}`}
+              onClick={() => void confirmPasswordReset()}
+            >
+              Issue Password
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-4 text-xs">
+          <div>
+            <label className="mb-1 block font-semibold text-slate-300">
+              Custom New Password <span className="text-slate-500 font-normal">(optional — min 8 characters)</span>
+            </label>
+            <input
+              type="text"
+              value={customPassword}
+              onChange={e => setCustomPassword(e.target.value)}
+              placeholder="Leave blank to auto-generate strong password"
+              className={INPUT_CLASS}
+            />
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer text-slate-300 select-none">
+            <input
+              type="checkbox"
+              checked={requireRotation}
+              onChange={e => setRequireRotation(e.target.checked)}
+              className="rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500"
+            />
+            <span>Require user to change password upon next login</span>
+          </label>
+
+          <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-3 text-slate-400 text-[11px] space-y-1">
+            <p className="font-semibold text-slate-300">Account Target:</p>
+            <p>Email: <span className="font-mono text-white">{passwordTarget?.email}</span></p>
+            <p>Role: <span className="text-blue-400 font-medium">{passwordTarget ? humanizeRole(passwordTarget.role) : ''}</span></p>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Issued Password Display Modal */}
+      <Modal
+        open={!!issuedPasswordResult}
+        onClose={() => setIssuedPasswordResult(null)}
+        title="New Password Issued"
+        description="Share these credentials securely with the account holder. The password is displayed once and will not be stored in plaintext."
+        icon={KeyRound}
+        tone="warning"
+        footer={<Button variant="primary" onClick={() => setIssuedPasswordResult(null)}>Done — Credential Delivered</Button>}
+      >
+        <div className="space-y-3 text-xs">
+          <p className="text-slate-300">
+            A new password has been set for <strong className="text-white">{issuedPasswordResult?.name}</strong> (<span className="font-mono text-blue-300">{issuedPasswordResult?.email}</span>).
+          </p>
+          {issuedPasswordResult && (
+            <SecretField label="Issued Password" value={issuedPasswordResult.password} />
+          )}
+          <p className="text-[11px] text-amber-300">
+            If &quot;Require password change&quot; was selected, the user will be prompted to set their own permanent password immediately upon signing in.
+          </p>
         </div>
       </Modal>
     </ResourceGate>

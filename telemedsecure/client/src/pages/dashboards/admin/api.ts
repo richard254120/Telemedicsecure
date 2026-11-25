@@ -118,6 +118,28 @@ export const changeUserRole = (h: HeadersFactory, userId: string, role: UserRole
 export const setUserActive = (h: HeadersFactory, userId: string, isActive: boolean) =>
   put<{ message: string }>(h, `/admin/users/${userId}/status`, { isActive }, 'Status change failed');
 
+export interface ResetPasswordInput {
+  password?: string;
+  requirePasswordChange?: boolean;
+}
+
+export interface ResetPasswordResult {
+  message: string;
+  issuedPassword: string;
+  mustChangePassword: boolean;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: UserRole;
+  };
+}
+
+export const resetUserPassword = (h: HeadersFactory, userId: string, input?: ResetPasswordInput) =>
+  post<ResetPasswordResult>(
+    h, `/admin/users/${userId}/reset-password`, input ?? {}, 'Password reset failed',
+  );
+
 export const resetUserTotp = (h: HeadersFactory, userId: string) =>
   post<{ message: string; secret: string; replacedExistingEnrolment: boolean }>(
     h, `/admin/users/${userId}/totp`, {}, '2FA reset failed',
