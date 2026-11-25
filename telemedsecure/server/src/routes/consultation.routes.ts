@@ -108,12 +108,9 @@ router.get('/patients', requireRole([Role.DOCTOR, Role.NURSE, Role.ADMIN, Role.R
   try {
     const user = (req as any).user;
     const where: any = { role: Role.PATIENT };
-    // Doctors and nurses only see the patients on their own panel; station
-    // roles and admins keep the full directory so scheduling does not regress.
-    if (user.role === Role.DOCTOR || user.role === Role.NURSE) {
-      const accessible = await getAccessiblePatientIds(user);
-      if (accessible !== null) where.id = { in: accessible };
-    }
+    // Clinical staff see patient identities in the directory/scheduler, but clinical
+    // records (SOAP notes, diagnoses, prescriptions) remain strictly gated behind
+    // patient access keys and access grants.
     const patients = await prisma.user.findMany({
       where,
       select: {

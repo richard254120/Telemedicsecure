@@ -546,9 +546,45 @@ export default function DoctorDashboard() {
         apiGet<{ items: any[]; unreadCount: number }>(getAuthHeaders, '/notifications?unread=true&limit=1', 'Failed to load notifications').catch(() => ({ items: [], unreadCount: 0 }))
       ]);
 
-      const pts = Array.isArray(ptsRes) ? ptsRes : [];
+      let pts = Array.isArray(ptsRes) ? ptsRes : [];
+      const cons = Array.isArray(consRes) ? consRes : [];
+
+      // Fallback: If pts is empty, also derive patients from consultations & shared grants
+      if (pts.length === 0) {
+        const patientMap = new Map<string, any>();
+        cons.forEach((c: any) => {
+          if (c.patient && c.patient.id) {
+            patientMap.set(c.patient.id, {
+              id: c.patient.id,
+              firstName: c.patient.firstName || 'Patient',
+              lastName: c.patient.lastName || `#${c.patient.id.substring(0, 6)}`,
+              email: c.patient.email || '',
+              createdAt: c.createdAt || new Date().toISOString(),
+              patientConsultations: [],
+              prescriptions: []
+            });
+          }
+        });
+        if (Array.isArray(sharedRes)) {
+          sharedRes.forEach((g: any) => {
+            if (g.patient && g.patient.id && !patientMap.has(g.patient.id)) {
+              patientMap.set(g.patient.id, {
+                id: g.patient.id,
+                firstName: g.patient.firstName || 'Patient',
+                lastName: g.patient.lastName || `#${g.patient.id.substring(0, 6)}`,
+                email: g.patient.email || '',
+                createdAt: g.createdAt || new Date().toISOString(),
+                patientConsultations: [],
+                prescriptions: []
+              });
+            }
+          });
+        }
+        pts = Array.from(patientMap.values());
+      }
+
       setPatients(pts);
-      setConsultations(Array.isArray(consRes) ? consRes : []);
+      setConsultations(cons);
       setPrescriptions(Array.isArray(rxRes) ? rxRes : []);
       setClinicalFlags(Array.isArray(flagsRes) ? flagsRes : []);
       setMedicalRecords(Array.isArray(recsRes) ? recsRes : []);
@@ -557,10 +593,13 @@ export default function DoctorDashboard() {
       setSharedGrants(Array.isArray(sharedRes) ? sharedRes : []);
       setUnreadNotifCount(typeof notifRes?.unreadCount === 'number' ? notifRes.unreadCount : 0);
 
-      // Auto-select first patient if none selected
-      if (!selectedPatientId && pts.length > 0) {
-        setSelectedPatientId(pts[0].id);
-      }
+      // Auto-select first patient if none selected or currently selected is not in list
+      setSelectedPatientId((prev) => {
+        if (prev && pts.some((p: any) => p.id === prev)) {
+          return prev;
+        }
+        return pts.length > 0 ? pts[0].id : '';
+      });
     } catch (e: any) {
       if (!silent) {
         console.error('Failed to load doctor dashboard data', e);
