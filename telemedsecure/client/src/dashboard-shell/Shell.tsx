@@ -19,6 +19,7 @@ import { useNow } from './hooks/useNow';
 import { ACCENTS, type NavTab, type ShellProps } from './types';
 import { Button } from './ui';
 import ThemeToggle from '../components/ThemeToggle';
+import LanguageToggle from '../components/LanguageToggle';
 import ConsultationCallAlert from '../components/ConsultationCallAlert';
 
 function NavList({
@@ -240,7 +241,8 @@ const Shell: React.FC<ShellProps> = ({
               )}
               {headerActions}
 
-              {/* Whole-page dark / light switch, present on every station. */}
+              {/* Language and whole-page dark / light switch */}
+              <LanguageToggle />
               <ThemeToggle />
 
               <div className="relative" onClick={event => event.stopPropagation()}>

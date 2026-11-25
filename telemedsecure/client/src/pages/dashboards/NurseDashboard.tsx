@@ -42,10 +42,12 @@ import { handoffBadge } from '../../dashboard-shell/handoff';
 import { get as apiGet, patch as apiPatch, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavTab } from '../../dashboard-shell/types';
 import NotificationBell from '../../dashboard-shell/NotificationBell';
+import { useLanguage } from '../../context/LanguageContext';
 
 export default function NurseDashboard() {
   const navigate = useNavigate();
   const { user, getAuthHeaders, logout } = useAuth();
+  const { t } = useLanguage();
 
   const [activeTab, setActiveTab] = useState<'vitals' | 'triage' | 'patients' | 'care-plans' | 'med-admin'>('vitals');
   const [patients, setPatients] = useState<any[]>([]);
@@ -325,11 +327,11 @@ export default function NurseDashboard() {
   };
 
   const nurseTabs: NavTab[] = [
-    { id: 'vitals', label: 'Vitals & NEWS2', caption: 'Continuous telemetry capture', group: 'Nursing Station', icon: HeartPulse },
-    { id: 'triage', label: 'Emergency Triage', caption: 'Virtual triage & ESI queue', group: 'Nursing Station', icon: Activity },
-    { id: 'med-admin', label: 'e-MAR Medication Admin', caption: 'Verified bedside administration', group: 'Nursing Station', icon: Pill },
-    { id: 'care-plans', label: 'Care Coordination', caption: 'Nursing care plans & goals', group: 'Nursing Station', icon: ClipboardList },
-    { id: 'patients', label: 'Assigned Patients', caption: 'Patient roster & encounters', group: 'Nursing Station', icon: Users },
+    { id: 'vitals', label: t('nav.vitals', 'Vitals & NEWS2'), caption: 'Continuous telemetry capture', group: t('nurse.station_title', 'Nursing Station'), icon: HeartPulse },
+    { id: 'triage', label: t('nav.triage', 'Emergency Triage'), caption: 'Virtual triage & ESI queue', group: t('nurse.station_title', 'Nursing Station'), icon: Activity },
+    { id: 'med-admin', label: t('nav.med_admin', 'e-MAR Medication Admin'), caption: 'Verified bedside administration', group: t('nurse.station_title', 'Nursing Station'), icon: Pill },
+    { id: 'care-plans', label: t('nav.care_plans', 'Care Coordination'), caption: 'Nursing care plans & goals', group: t('nurse.station_title', 'Nursing Station'), icon: ClipboardList },
+    { id: 'patients', label: t('nav.patients', 'Assigned Patients'), caption: 'Patient roster & encounters', group: t('nurse.station_title', 'Nursing Station'), icon: Users },
   ];
   const nav = buildStationNav('NURSE', nurseTabs);
   const counts: Record<string, CountChip> = {
@@ -848,81 +850,81 @@ export default function NurseDashboard() {
                   const badge = handoffBadge(c.status);
                   const toneClass =
                     badge.tone === 'success' ? 'bg-emerald-500/15 text-emerald-300'
-                    : badge.tone === 'danger' ? 'bg-rose-500/15 text-rose-300'
-                    : badge.tone === 'warning' ? 'bg-amber-500/15 text-amber-300'
-                    : 'bg-slate-700 text-slate-300';
+                      : badge.tone === 'danger' ? 'bg-rose-500/15 text-rose-300'
+                        : badge.tone === 'warning' ? 'bg-amber-500/15 text-amber-300'
+                          : 'bg-slate-700 text-slate-300';
                   const isPending = c.status === 'PENDING';
                   const isActive = ['PENDING', 'CONFIRMED', 'SCHEDULED'].includes(c.status);
                   return (
-                  <div
-                    key={c.id}
-                    className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${toneClass}`}>
-                          {badge.label}
-                        </span>
-                        <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
-                          ID: {c.id.substring(0, 8)}
-                        </span>
+                    <div
+                      key={c.id}
+                      className="p-6 rounded-3xl bg-slate-800/80 border border-slate-700/80 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4"
+                    >
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-semibold ${toneClass}`}>
+                            {badge.label}
+                          </span>
+                          <span className="px-2 py-0.5 rounded text-[10px] font-mono font-semibold bg-slate-700 text-slate-300">
+                            ID: {c.id.substring(0, 8)}
+                          </span>
+                        </div>
+                        <h3 className="text-base font-bold text-white">
+                          {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId}
+                        </h3>
+                        <p className="text-xs text-slate-400">
+                          Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'} · {new Date(c.scheduledAt).toLocaleString()}
+                        </p>
                       </div>
-                      <h3 className="text-base font-bold text-white">
-                        {c.patient ? `${c.patient.firstName} ${c.patient.lastName}` : c.patientId}
-                      </h3>
-                      <p className="text-xs text-slate-400">
-                        Doctor: {c.doctor ? `Dr. ${c.doctor.firstName} ${c.doctor.lastName}` : 'Assigned'} · {new Date(c.scheduledAt).toLocaleString()}
-                      </p>
-                    </div>
 
-                    <div className="flex flex-wrap items-center justify-end gap-2">
-                      {isPending && (
-                        <>
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {isPending && (
+                          <>
+                            <button
+                              onClick={() => handleAcceptBooking(c)}
+                              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                            >
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span>Accept</span>
+                            </button>
+                            <button
+                              onClick={() => openBookingAction('decline', c)}
+                              className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                            >
+                              <XCircle className="w-4 h-4" />
+                              <span>Decline</span>
+                            </button>
+                          </>
+                        )}
+                        {isActive && (
                           <button
-                            onClick={() => handleAcceptBooking(c)}
-                            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                            onClick={() => openBookingAction('reschedule', c)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-xs transition flex items-center space-x-1.5"
                           >
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span>Accept</span>
+                            <CalendarClock className="w-4 h-4" />
+                            <span>Reschedule</span>
                           </button>
+                        )}
+                        {isActive && !isPending && (
                           <button
-                            onClick={() => openBookingAction('decline', c)}
-                            className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition flex items-center space-x-1.5"
+                            onClick={() => openBookingAction('cancel', c)}
+                            className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition"
                           >
-                            <XCircle className="w-4 h-4" />
-                            <span>Decline</span>
+                            Cancel
                           </button>
-                        </>
-                      )}
-                      {isActive && (
+                        )}
                         <button
-                          onClick={() => openBookingAction('reschedule', c)}
-                          className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-xs transition flex items-center space-x-1.5"
+                          onClick={() => {
+                            setSelectedConsultationId(c.id);
+                            setActiveTab('vitals');
+                          }}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
                         >
-                          <CalendarClock className="w-4 h-4" />
-                          <span>Reschedule</span>
+                          <HeartPulse className="w-4 h-4" />
+                          <span>Enter Vitals</span>
                         </button>
-                      )}
-                      {isActive && !isPending && (
-                        <button
-                          onClick={() => openBookingAction('cancel', c)}
-                          className="px-3.5 py-2 rounded-xl bg-slate-700 hover:bg-rose-600/80 text-slate-200 hover:text-white font-semibold text-xs transition"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      <button
-                        onClick={() => {
-                          setSelectedConsultationId(c.id);
-                          setActiveTab('vitals');
-                        }}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs transition flex items-center space-x-1.5"
-                      >
-                        <HeartPulse className="w-4 h-4" />
-                        <span>Enter Vitals</span>
-                      </button>
+                      </div>
                     </div>
-                  </div>
                   );
                 })
               )}
@@ -939,10 +941,10 @@ export default function NurseDashboard() {
               <h3 className="text-base font-bold text-white flex items-center space-x-2">
                 {bookingAction.mode === 'reschedule' ? <CalendarClock className="w-5 h-5 text-cyan-400" />
                   : bookingAction.mode === 'decline' ? <XCircle className="w-5 h-5 text-rose-400" />
-                  : <AlertTriangle className="w-5 h-5 text-amber-400" />}
+                    : <AlertTriangle className="w-5 h-5 text-amber-400" />}
                 <span>{bookingAction.mode === 'reschedule' ? 'Reschedule consultation'
                   : bookingAction.mode === 'decline' ? 'Decline request'
-                  : 'Cancel consultation'}</span>
+                    : 'Cancel consultation'}</span>
               </h3>
               <button onClick={() => setBookingAction(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />

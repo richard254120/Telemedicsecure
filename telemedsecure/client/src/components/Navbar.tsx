@@ -2,6 +2,8 @@ import React from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth, UserRole } from '../context/AuthContext';
 import ThemeToggle from '../components/ThemeToggle';
+import LanguageToggle from '../components/LanguageToggle';
+import { useLanguage } from '../context/LanguageContext';
 import {
   ShieldCheck,
   FileText,
@@ -24,12 +26,13 @@ export default function Navbar() {
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
 
   // Dynamic links depending on active role
   const getRoleNavItems = () => {
     if (!user) {
       return [
-        { label: 'Login', path: '/login', icon: User }
+        { label: t('common.login', 'Sign In'), path: '/login', icon: User }
       ];
     }
 
@@ -37,21 +40,21 @@ export default function Navbar() {
 
     // Role-specific primary dashboard
     items.push({
-      label: `${user.role} Dashboard`,
+      label: `${t(`role.${user.role.toLowerCase()}`, user.role)} ${t('common.dashboard', 'Dashboard')}`,
       path: `/${user.role.toLowerCase()}`,
       icon: LayoutDashboard
     });
 
     if (user.role === 'DOCTOR') {
-      items.push({ label: 'Vitals & Flags', path: '/vitals', icon: HeartPulse });
-      items.push({ label: 'Issue RX', path: '/prescriptions/new', icon: PlusCircle });
-      items.push({ label: 'Prescriptions', path: '/prescriptions', icon: FileText });
+      items.push({ label: t('nav.vitals', 'Vitals & Flags'), path: '/vitals', icon: HeartPulse });
+      items.push({ label: t('doctor.issued', 'Issue RX'), path: '/prescriptions/new', icon: PlusCircle });
+      items.push({ label: t('nav.prescriptions', 'Prescriptions'), path: '/prescriptions', icon: FileText });
     } else if (user.role === 'PATIENT') {
-      items.push({ label: 'Consultations', path: '/', icon: Video });
-      items.push({ label: 'Prescriptions', path: '/prescriptions', icon: FileText });
+      items.push({ label: t('nav.consultations', 'Consultations'), path: '/', icon: Video });
+      items.push({ label: t('nav.prescriptions', 'Prescriptions'), path: '/prescriptions', icon: FileText });
     } else if (user.role === 'NURSE') {
-      items.push({ label: 'Capture Vitals', path: '/nurse', icon: HeartPulse });
-      items.push({ label: 'Consultations', path: '/', icon: Video });
+      items.push({ label: t('nurse.enter_vitals', 'Capture Vitals'), path: '/nurse', icon: HeartPulse });
+      items.push({ label: t('nav.consultations', 'Consultations'), path: '/', icon: Video });
     } else if (user.role === 'ADMIN') {
       items.push({ label: 'Compliance Hub', path: '/compliance', icon: ShieldAlert });
       items.push({ label: 'Audit Chain', path: '/integrity', icon: Blocks });
@@ -139,7 +142,8 @@ export default function Navbar() {
                 Sign In
               </Link>
             )}
-            {/* Theme toggle */}
+            {/* Language and Theme toggles */}
+            <LanguageToggle />
             <ThemeToggle />
           </div>
         </div>

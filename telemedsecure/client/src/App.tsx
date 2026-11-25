@@ -2,6 +2,7 @@ import React, { Suspense, lazy, useState, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, useParams, useNavigate, useLocation } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import HospitalClinicalSplash from './components/HospitalClinicalSplash';
 
@@ -112,7 +113,8 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AuthProvider>
+      <LanguageProvider>
+        <AuthProvider>
         {/* Hospital clinical telemetry opening animation — renders on top, smoothly fades out */}
         {showSplash && <HospitalClinicalSplash onDone={handleSplashDone} />}
 
@@ -295,8 +297,9 @@ function App() {
           </main>
         </div>
       </AuthProvider>
-    </BrowserRouter>
-  );
+    </LanguageProvider>
+  </BrowserRouter>
+);
 }
 
 export default App;
