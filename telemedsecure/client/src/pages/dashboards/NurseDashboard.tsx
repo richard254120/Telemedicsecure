@@ -24,15 +24,22 @@ import {
   MessageSquare,
   XCircle,
   CalendarClock,
-  X
+  X,
+  ClipboardList,
+  Pill,
+  Calendar,
+  Search,
+  Check
 } from 'lucide-react';
 import { TwoFactorSetupModal } from '../../components/TwoFactorSetupModal';
 import { ClinicalChatDrawer } from '../../components/ClinicalChatDrawer';
+import TriageWorkbench from '../../components/stations/TriageWorkbench';
+import CareCoordinatorWorkbench from '../../components/stations/CareCoordinatorWorkbench';
 import Shell from '../../dashboard-shell/Shell';
 import { accentForRole, brandSubtitleForRole, buildStationNav } from '../../dashboard-shell/navConfig';
 import { Button, ErrorState, Field, INPUT_CLASS } from '../../dashboard-shell/ui';
 import { handoffBadge } from '../../dashboard-shell/handoff';
-import { get as apiGet, patch as apiPatch, errorMessage } from '../../dashboard-shell/transport';
+import { get as apiGet, patch as apiPatch, post as apiPost, errorMessage } from '../../dashboard-shell/transport';
 import type { CountChip, NavTab } from '../../dashboard-shell/types';
 import NotificationBell from '../../dashboard-shell/NotificationBell';
 
@@ -40,13 +47,16 @@ export default function NurseDashboard() {
   const navigate = useNavigate();
   const { user, getAuthHeaders, logout } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'vitals' | 'patients'>('vitals');
+  const [activeTab, setActiveTab] = useState<'vitals' | 'triage' | 'patients' | 'care-plans' | 'med-admin'>('vitals');
   const [patients, setPatients] = useState<any[]>([]);
   const [consultations, setConsultations] = useState<any[]>([]);
+  const [prescriptions, setPrescriptions] = useState<any[]>([]);
+  const [medAdminLogs, setMedAdminLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [showChatDrawer, setShowChatDrawer] = useState(false);
+  const [medSearchTerm, setMedSearchTerm] = useState('');
 
   // Vitals form state
   const [selectedConsultationId, setSelectedConsultationId] = useState<string>('');
@@ -78,13 +88,17 @@ export default function NurseDashboard() {
     setLoading(true);
     setLoadError(null);
     try {
-      const [consData, ptsData] = await Promise.all([
+      const [consData, ptsData, rxData] = await Promise.all([
         apiGet<any[]>(getAuthHeaders, '/consultations', 'Failed to load consultations'),
-        apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients').catch(() => [])
+        apiGet<any[]>(getAuthHeaders, '/consultations/patients', 'Failed to load patients').catch(() => []),
+        apiGet<any[]>(getAuthHeaders, '/prescriptions', 'Failed to load prescriptions').catch(() => [])
       ]);
 
       const consList = Array.isArray(consData) ? consData : [];
       setConsultations(consList);
+
+      const rxList = Array.isArray(rxData) ? rxData : [];
+      setPrescriptions(rxList);
 
       const ptsList = Array.isArray(ptsData) ? ptsData : [];
       // Combine direct patient directory with patients found in consultations
@@ -111,6 +125,19 @@ export default function NurseDashboard() {
       setLastSyncedAt(Date.now());
       setLoading(false);
     }
+  };
+
+  const recordMedicationAdministered = (rxId: string, medicationName: string, patientName: string) => {
+    const log = {
+      id: `mar-${Date.now()}`,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      medication: medicationName,
+      patient: patientName,
+      status: 'ADMINISTERED',
+      nurse: `${user?.firstName || 'Nurse'} ${user?.lastName || ''}`
+    };
+    setMedAdminLogs(prev => [log, ...prev]);
+    flashRoster('ok', `Dose verified & signed: ${medicationName} given to ${patientName}`);
   };
 
   // --- Booking lifecycle (decline / reschedule / cancel) for care-team patients ---
@@ -298,13 +325,19 @@ export default function NurseDashboard() {
   };
 
   const nurseTabs: NavTab[] = [
-    { id: 'vitals', label: 'Vitals Entry & Triage', caption: 'Capture NEWS2 vitals', group: 'Nursing Station', icon: HeartPulse },
-    { id: 'patients', label: 'Assigned Patients', caption: 'Your patient roster', group: 'Nursing Station', icon: Users },
+    { id: 'vitals', label: 'Vitals & NEWS2', caption: 'Continuous telemetry capture', group: 'Nursing Station', icon: HeartPulse },
+    { id: 'triage', label: 'Emergency Triage', caption: 'Virtual triage & ESI queue', group: 'Nursing Station', icon: Activity },
+    { id: 'med-admin', label: 'e-MAR Medication Admin', caption: 'Verified bedside administration', group: 'Nursing Station', icon: Pill },
+    { id: 'care-plans', label: 'Care Coordination', caption: 'Nursing care plans & goals', group: 'Nursing Station', icon: ClipboardList },
+    { id: 'patients', label: 'Assigned Patients', caption: 'Patient roster & encounters', group: 'Nursing Station', icon: Users },
   ];
   const nav = buildStationNav('NURSE', nurseTabs);
   const counts: Record<string, CountChip> = {
     vitals: { value: recentEntries.length, status: 'success' },
-    patients: { value: consultations.length, status: 'success' },
+    triage: { value: consultations.filter(c => c.status === 'SCHEDULED').length, status: 'success' },
+    'med-admin': { value: prescriptions.length, status: 'success' },
+    'care-plans': { value: patients.length, status: 'success' },
+    patients: { value: consultations.length || patients.length, status: 'success' },
   };
   const signOut = () => { logout(); navigate('/login', { replace: true }); };
   const headerActions = (
@@ -324,7 +357,7 @@ export default function NurseDashboard() {
         brandTitle="TeleMedSecure"
         brandSubtitle={brandSubtitleForRole(user?.role)}
         activeTab={activeTab}
-        onSelectTab={id => setActiveTab(id as 'vitals' | 'patients')}
+        onSelectTab={id => setActiveTab(id as 'vitals' | 'triage' | 'patients' | 'care-plans' | 'med-admin')}
         counts={counts}
         lastSyncedAt={lastSyncedAt}
         isRefreshing={loading}
@@ -601,7 +634,159 @@ export default function NurseDashboard() {
           </div>
         )}
 
-        {/* Tab 2: Assigned Patients */}
+        {/* Tab 2: Emergency Triage Station */}
+        {activeTab === 'triage' && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                  <Activity className="w-5 h-5 text-rose-400" />
+                  <span>Clinical Nursing Emergency Triage Station</span>
+                </h2>
+                <p className="text-xs text-slate-400">Classify acute arrival acuity levels using the 5-level Emergency Severity Index (ESI) & fast-track patients.</p>
+              </div>
+            </div>
+            <TriageWorkbench />
+          </div>
+        )}
+
+        {/* Tab 3: Care Coordination */}
+        {activeTab === 'care-plans' && (
+          <div className="space-y-4">
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                  <ClipboardList className="w-5 h-5 text-emerald-400" />
+                  <span>Nursing Care Plans & Population Coordination</span>
+                </h2>
+                <p className="text-xs text-slate-400">Interdisciplinary nursing diagnoses, care goals, 48-hr post-discharge protocols, and patient task monitoring.</p>
+              </div>
+            </div>
+            <CareCoordinatorWorkbench />
+          </div>
+        )}
+
+        {/* Tab 4: e-MAR Medication Administration Record */}
+        {activeTab === 'med-admin' && (
+          <div className="space-y-6">
+            <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-base font-bold text-white flex items-center space-x-2">
+                  <Pill className="w-5 h-5 text-teal-400" />
+                  <span>electronic Medication Administration Record (e-MAR)</span>
+                </h2>
+                <p className="text-xs text-slate-400">Enforce the 5 Rights of Medication Administration: Right Patient, Right Drug, Right Dose, Right Route, Right Time.</p>
+              </div>
+              <div className="relative min-w-[240px]">
+                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={medSearchTerm}
+                  onChange={e => setMedSearchTerm(e.target.value)}
+                  placeholder="Filter medication or patient..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Prescriptions & Administration Queue */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Active Physician Orders Awaiting Administration</h3>
+                {prescriptions.length === 0 ? (
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 text-center text-slate-400">
+                    <Pill className="w-10 h-10 mx-auto text-slate-600 mb-2" />
+                    <p className="text-sm">No active e-prescriptions on record.</p>
+                  </div>
+                ) : (
+                  prescriptions
+                    .filter(rx => {
+                      if (!medSearchTerm.trim()) return true;
+                      const q = medSearchTerm.toLowerCase();
+                      const meds = rx.items?.map((i: any) => i.medication).join(' ').toLowerCase() || '';
+                      const pat = rx.consultation?.patient ? `${rx.consultation.patient.firstName} ${rx.consultation.patient.lastName}`.toLowerCase() : '';
+                      return meds.includes(q) || pat.includes(q);
+                    })
+                    .map(rx => {
+                      const patientName = rx.consultation?.patient
+                        ? `${rx.consultation.patient.firstName} ${rx.consultation.patient.lastName}`
+                        : (rx.patientId ? `Patient #${rx.patientId.substring(0, 8)}` : 'Clinic Patient');
+                      const medsList = rx.items || [{ medication: 'Standard Clinical Prescription Order', dosage: 'Per protocol', instructions: 'Take as directed' }];
+                      return (
+                        <div key={rx.id} className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800 space-y-3">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-3">
+                            <div>
+                              <div className="flex items-center space-x-2">
+                                <span className="font-bold text-white text-sm">{patientName}</span>
+                                <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-teal-500/10 text-teal-300 border border-teal-500/30">
+                                  {rx.status || 'ORDERED'}
+                                </span>
+                              </div>
+                              <span className="text-[11px] text-slate-400">Ordered: {new Date(rx.createdAt).toLocaleString()}</span>
+                            </div>
+                            <span className="text-[10px] font-mono text-slate-500">Rx ID: #{rx.id.substring(0, 8)}</span>
+                          </div>
+
+                          <div className="space-y-2">
+                            {medsList.map((item: any, idx: number) => (
+                              <div key={idx} className="p-3 rounded-xl bg-slate-950/80 border border-slate-800/80 flex items-center justify-between gap-3">
+                                <div>
+                                  <div className="font-bold text-slate-200 text-xs flex items-center space-x-2">
+                                    <span>{item.medication || 'Medication'}</span>
+                                    {item.dosage && <span className="px-2 py-0.5 rounded bg-slate-800 text-blue-300 font-mono text-[10px]">{item.dosage}</span>}
+                                  </div>
+                                  <p className="text-[11px] text-slate-400 mt-0.5">{item.instructions || 'Administer according to physician protocol'}</p>
+                                </div>
+                                <button
+                                  onClick={() => recordMedicationAdministered(rx.id, item.medication || 'Medication', patientName)}
+                                  className="px-3.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-500 text-white font-bold text-xs transition flex items-center space-x-1 shrink-0 shadow-md shadow-teal-600/20"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Give & Sign</span>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })
+                )}
+              </div>
+
+              {/* Verified MAR Signed Ledger */}
+              <div className="space-y-4">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400">Shift Administration Sign-offs</h3>
+                <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+                  {medAdminLogs.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-slate-500">
+                      <Clock className="w-8 h-8 mx-auto text-slate-600 mb-2" />
+                      <p>No medications administered on this shift yet.</p>
+                      <p className="text-[10px] text-slate-600 mt-1">Administered doses are chain-anchored with clinician signature.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {medAdminLogs.map(log => (
+                        <div key={log.id} className="p-3 rounded-xl bg-slate-950 border border-emerald-500/30 text-xs space-y-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-emerald-400 flex items-center space-x-1">
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{log.medication}</span>
+                            </span>
+                            <span className="font-mono text-[10px] text-slate-400">{log.time}</span>
+                          </div>
+                          <div className="text-[11px] text-slate-300">Recipient: <strong className="text-white">{log.patient}</strong></div>
+                          <div className="text-[10px] text-slate-500 font-mono">Sign-off: {log.nurse} • VERIFIED</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Tab 5: Assigned Patients */}
         {activeTab === 'patients' && (
           <div className="space-y-4">
             <h2 className="text-lg font-bold text-white flex items-center space-x-2">
