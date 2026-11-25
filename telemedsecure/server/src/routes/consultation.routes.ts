@@ -8,11 +8,73 @@ import { createChainedAuditEvent } from '../services/audit.service';
 import { getAccessiblePatientIds, canViewPatient } from '../services/panelAccess.service';
 import { notify } from '../services/notification.service';
 import { broadcastAdminOps } from '../socket';
+import { getWaitingRoomsSnapshot } from '../socket/signaling';
 
 const router = Router();
 const prisma = new PrismaClient();
 
 router.use(requireAuth);
+
+/**
+ * GET /api/v1/consultations/call-alerts
+ * Real-time call room & scheduled consultation alerts for Doctor, Patient, and Nurse.
+ * Surfaces:
+ *  1. Any active call room where a patient (or doctor) is currently waiting
+ *  2. Any scheduled consultation whose appointment time is DUE NOW (within window)
+ */
+router.get('/call-alerts', async (req, res) => {
+  try {
+    const user = (req as any).user;
+    const now = new Date();
+
+    // 1. Snapshot of active waiting call rooms
+    const allWaitingRooms = getWaitingRoomsSnapshot();
+
+    // Filter relevant waiting rooms for this user
+    let userWaitingRooms = allWaitingRooms;
+    if (user.role === Role.DOCTOR) {
+      userWaitingRooms = allWaitingRooms.filter(r => r.doctorId === user.id);
+    } else if (user.role === Role.PATIENT) {
+      userWaitingRooms = allWaitingRooms.filter(r => r.patientId === user.id);
+    } // NURSE sees all or care-team
+
+    // 2. Query consultations scheduled around now:
+    // Window: from 3 hours ago (in case clinician or patient is late) up to 15 minutes ahead
+    const windowStart = new Date(now.getTime() - 3 * 60 * 60 * 1000);
+    const windowEnd = new Date(now.getTime() + 15 * 60 * 1000);
+
+    let whereClause: any = {
+      status: { in: [ConsultationStatus.CONFIRMED, ConsultationStatus.SCHEDULED, ConsultationStatus.IN_PROGRESS] },
+      scheduledAt: { gte: windowStart, lte: windowEnd },
+    };
+
+    if (user.role === Role.PATIENT) {
+      whereClause.patientId = user.id;
+    } else if (user.role === Role.DOCTOR) {
+      whereClause.doctorId = user.id;
+    } else if (user.role === Role.NURSE) {
+      const accessible = await getAccessiblePatientIds(user);
+      if (accessible !== null) whereClause.patientId = { in: accessible };
+    }
+
+    const dueConsultations = await prisma.consultation.findMany({
+      where: whereClause,
+      include: {
+        patient: { select: { id: true, firstName: true, lastName: true, email: true } },
+        doctor: { select: { id: true, firstName: true, lastName: true, email: true } },
+      },
+      orderBy: { scheduledAt: 'asc' },
+    });
+
+    res.json({
+      waitingRooms: userWaitingRooms,
+      dueConsultations,
+      serverTime: now.toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to fetch call alerts', details: err.message });
+  }
+});
 
 router.get('/', async (req, res) => {
   const user = (req as any).user;

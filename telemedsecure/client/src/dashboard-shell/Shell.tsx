@@ -19,6 +19,7 @@ import { useNow } from './hooks/useNow';
 import { ACCENTS, type NavTab, type ShellProps } from './types';
 import { Button } from './ui';
 import ThemeToggle from '../components/ThemeToggle';
+import ConsultationCallAlert from '../components/ConsultationCallAlert';
 
 function NavList({
   nav,
@@ -297,7 +298,10 @@ const Shell: React.FC<ShellProps> = ({
         </header>
 
         <main id={mainId} className="px-4 py-6 sm:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1500px] space-y-6">{children}</div>
+          <div className="mx-auto w-full max-w-[1500px] space-y-6">
+            <ConsultationCallAlert />
+            {children}
+          </div>
         </main>
       </div>
     </div>
