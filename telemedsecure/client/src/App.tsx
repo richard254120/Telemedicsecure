@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { LanguageProvider } from './context/LanguageContext';
 import ProtectedRoute from './components/ProtectedRoute';
 import HospitalClinicalSplash from './components/HospitalClinicalSplash';
+import Home from './pages/Home';
 
 /*
  * Every role dashboard mounts into the shared `dashboard-shell`, which already
@@ -46,7 +47,6 @@ const IncidentForensicsDashboard = lazy(() => import('./pages/IncidentForensicsD
 const ReportVerification = lazy(() => import('./pages/ReportVerification'));
 const Login = lazy(() => import('./pages/Login'));
 const ConsultationCreate = lazy(() => import('./pages/ConsultationCreate'));
-const Home = lazy(() => import('./pages/Home'));
 const AppointmentScheduler = lazy(() => import('./pages/AppointmentScheduler'));
 
 const PatientDashboard = lazy(() => import('./pages/dashboards/PatientDashboard'));
